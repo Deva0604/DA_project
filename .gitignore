@@ -1,0 +1,17 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+
+cat >> .gitignore <<'EOF'
+
+# Generated routing graphs and processed datasets
+data/processed/
+data/raw/osm/
+
+# Local cache files
+cache/
+
+# Windows metadata files
+*:Zone.Identifier
+EOF
