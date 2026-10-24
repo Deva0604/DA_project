@@ -23,6 +23,15 @@ G = nx.read_graphml(
 print(f"Nodes: {G.number_of_nodes():,}")
 print(f"Edges: {G.number_of_edges():,}")
 
+# Convert node coordinates to numeric for ox.distance.nearest_nodes
+for _, data in G.nodes(data=True):
+    for attr in ("x", "y"):
+        if attr in data:
+            try:
+                data[attr] = float(data[attr])
+            except (TypeError, ValueError):
+                pass
+
 # Build a directed graph containing only usable, open roads.
 R = nx.DiGraph()
 R.add_nodes_from(G.nodes(data=True))

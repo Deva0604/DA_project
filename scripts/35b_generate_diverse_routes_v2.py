@@ -15,16 +15,16 @@ warnings.filterwarnings("ignore")
 
 ROOT = Path(__file__).resolve().parents[1]
 
-GRAPH_FILE = ROOT / "data/processed/saferoute_routing_graph_v3.graphml"
+GRAPH_FILE = ROOT / "data/processed/saferoute_routing_graph_v6.graphml"
 OUTPUT_DIR = ROOT / "data/processed"
 
 MAX_RAW_CANDIDATES = 10
 MAX_FINAL_ROUTES = 5
 MIN_FINAL_ROUTES = 3
 
-# Soft diversity thresholds. If a corridor is constrained,
-# relax the threshold gradually and record the actual overlap.
-DIVERSITY_THRESHOLDS = [0.70, 0.80, 0.90, 0.97]
+# Maximum permitted Jaccard similarity with previously selected routes.
+# Lower values enforce stronger diversity.
+DIVERSITY_THRESHOLDS = [0.50, 0.60, 0.70]
 
 RISK_WEIGHT = 0.75
 
@@ -658,7 +658,13 @@ def main():
             "balanced_route": balanced["final_metrics"]["route_id"],
             "status": (
                 "PASS"
-                if len(selected) >= MIN_FINAL_ROUTES
+                if (
+                    len(selected) >= MIN_FINAL_ROUTES
+                    and (
+                        sum(similarities) / len(similarities)
+                        if similarities else 1.0
+                    ) <= 0.50
+                )
                 else "LIMITED_ROUTE_DIVERSITY"
             ),
         })

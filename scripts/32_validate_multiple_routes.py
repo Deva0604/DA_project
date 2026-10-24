@@ -263,6 +263,20 @@ except Exception:
             "epsg:4326"
         )
 
+# Normalize node coordinates - ox.distance.nearest_nodes requires floats
+for _, data in G.nodes(data=True):
+    if "x" in data:
+        try:
+            data["x"] = float(data["x"])
+        except (TypeError, ValueError):
+            pass
+
+    if "y" in data:
+        try:
+            data["y"] = float(data["y"])
+        except (TypeError, ValueError):
+            pass
+
 
 print(
     f"Nodes : {len(G.nodes):,}"
