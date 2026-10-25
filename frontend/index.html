@@ -3,44 +3,71 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SafeRoute | Intelligent Road Safety</title>
+<title>SafeRoute — Intelligent Road Risk Mapping & Safer Route Recommendation</title>
 
-<link rel="stylesheet"
- href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 
 <style>
 :root {
-  --bg: #0b1220;
-  --panel: #121d2e;
-  --panel2: #18263a;
-  --text: #edf4ff;
-  --muted: #9aabc1;
-  --green: #42e6a4;
-  --blue: #58a6ff;
-  --orange: #ffb454;
-  --red: #ff7373;
-  --border: #293950;
+  --bg-dark: #090e17;
+  --bg-card: #111927;
+  --bg-card-alt: #172234;
+  --bg-input: #1c2a40;
+  --border-color: #23344e;
+  --border-focus: #3b82f6;
+  --text-main: #f1f5f9;
+  --text-muted: #94a3b8;
+  --text-dim: #64748b;
+
+  --accent-green: #10b981;
+  --accent-green-bg: rgba(16, 185, 129, 0.15);
+  --accent-blue: #3b82f6;
+  --accent-blue-bg: rgba(59, 130, 246, 0.15);
+  --accent-purple: #8b5cf6;
+  --accent-purple-bg: rgba(139, 92, 246, 0.15);
+  --accent-amber: #f59e0b;
+  --accent-amber-bg: rgba(245, 158, 11, 0.15);
+  --accent-red: #ef4444;
+  --accent-red-bg: rgba(239, 68, 68, 0.15);
+
+  --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --radius-lg: 14px;
+  --radius-md: 10px;
+  --radius-sm: 6px;
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.4);
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
 
 body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--text);
-  font-family: Inter, system-ui, Arial, sans-serif;
+  background-color: var(--bg-dark);
+  color: var(--text-main);
+  font-family: var(--font-family);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.5;
 }
 
+/* Header Navbar */
 header {
-  min-height: 72px;
-  padding: 16px 26px;
+  background: #0d1422;
+  border-bottom: 1px solid var(--border-color);
+  padding: 14px 28px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  flex-wrap: wrap;
-  border-bottom: 1px solid var(--border);
-  background: #0e1828;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  box-shadow: var(--shadow-sm);
 }
 
 .brand {
@@ -49,445 +76,827 @@ header {
   gap: 12px;
 }
 
-.logo {
-  width: 42px;
-  height: 42px;
+.brand-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
   display: grid;
   place-items: center;
-  border-radius: 13px;
-  background: var(--green);
-  color: #071a17;
-  font-size: 23px;
   font-weight: 900;
+  font-size: 20px;
+  color: #032019;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.4);
 }
 
-.brand h1 { margin: 0; font-size: 21px; }
-.brand p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+.brand-title {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  color: var(--text-main);
+}
 
-.status {
+.brand-subtitle {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.backend-status {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--muted);
-  font-size: 12px;
+  background: var(--bg-card-alt);
+  border: 1px solid var(--border-color);
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 12.5px;
+  color: var(--text-muted);
 }
 
-.dot {
-  width: 9px;
-  height: 9px;
-  background: var(--orange);
+.status-dot {
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
+  background-color: var(--accent-amber);
+  box-shadow: 0 0 8px var(--accent-amber);
 }
 
+.status-dot.online {
+  background-color: var(--accent-green);
+  box-shadow: 0 0 8px var(--accent-green);
+}
+
+.status-dot.offline {
+  background-color: var(--accent-red);
+  box-shadow: 0 0 8px var(--accent-red);
+}
+
+/* Layout container */
 main {
-  padding: 26px;
-  max-width: 1760px;
-  margin: auto;
-}
-
-.hero {
-  margin-bottom: 20px;
-}
-
-.hero h2 {
-  margin: 0 0 8px;
-  font-size: clamp(23px, 3vw, 34px);
-}
-
-.hero p { margin: 0; color: var(--muted); line-height: 1.6; }
-
-.stats {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  margin: 22px 0;
-}
-
-.stat, .panel {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 15px;
-}
-
-.stat { padding: 20px; }
-.stat .label { color: var(--muted); font-size: 12.5px; }
-.stat .value { font-size: 28px; font-weight: 800; margin-top: 8px; }
-
-.data-status-panel {
-  margin: 20px 0;
-  padding: 18px;
-}
-
-.data-status-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 15px;
-}
-
-.data-status-header h3 {
-  margin: 0 0 5px;
-  font-size: 16px;
-}
-
-.data-status-header p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.data-status-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.data-status-card {
-  padding: 14px;
-  background: var(--panel2);
-  border: 1px solid var(--border);
-  border-radius: 11px;
-  min-width: 0;
-}
-
-.data-status-label {
-  color: var(--muted);
-  font-size: 12px;
-  margin-bottom: 8px;
-}
-
-.data-status-value {
-  font-size: 18px;
-  font-weight: 800;
-  overflow-wrap: anywhere;
-}
-
-.data-status-detail {
-  margin-top: 8px;
-  color: var(--muted);
-  font-size: 12.5px;
-  line-height: 1.5;
-}
-
-.fresh { color: var(--green); }
-.stale { color: var(--red); }
-.unavailable { color: var(--orange); }
-
-@media (max-width: 650px) {
-  .data-status-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-.workspace {
-  display: grid;
-  grid-template-columns: 410px minmax(0, 1fr);
-  gap: 20px;
-  align-items: start;
-}
-
-.panel { overflow: hidden; }
-.panel-heading { padding: 20px 20px 14px; }
-.panel-heading h3 { margin: 0 0 6px; font-size: 17px; }
-.panel-heading p { margin: 0; font-size: 13px; color: var(--muted); }
-
-.controls { padding: 0 20px 20px; }
-
-label {
-  display: block;
-  margin: 16px 0 9px;
-  font-size: 12.5px;
-  color: var(--muted);
-  font-weight: 600;
-}
-
-select, button {
+  flex: 1;
+  max-width: 1800px;
   width: 100%;
-  border-radius: 9px;
-  padding: 13px;
-  font: inherit;
-  font-size: 14px;
+  margin: 0 auto;
+  padding: 24px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
-select {
-  color: var(--text);
-  background: var(--panel2);
-  border: 1px solid var(--border);
-}
-
-button {
-  margin-top: 16px;
-  border: 0;
-  color: #061b16;
-  background: var(--green);
-  font-weight: 800;
-  cursor: pointer;
-  font-size: 14px;
-}
-
-button:disabled { opacity: 0.5; cursor: wait; }
-
-.notice {
-  margin-top: 14px;
-  padding: 11px;
-  border-radius: 9px;
-  color: var(--muted);
-  background: var(--panel2);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.route-list { padding: 0 16px 16px; }
-
-.route-card {
-  border: 1px solid var(--border);
-  border-radius: 13px;
-  padding: 16px;
-  margin-top: 12px;
-  cursor: pointer;
-  background: #101a2a;
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-
-.route-card:hover, .route-card.active {
-  border-color: var(--green);
-  box-shadow: 0 4px 14px rgba(0,0,0,0.25);
-}
-
-.route-top {
+/* Overview / Hero */
+.hero {
   display: flex;
   justify-content: space-between;
-  gap: 8px;
-  align-items: center;
+  align-items: flex-end;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.hero-text h2 {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-bottom: 4px;
+}
+
+.hero-text p {
+  font-size: 13.5px;
+  color: var(--text-muted);
+  max-width: 800px;
+}
+
+/* KPI Summary Cards */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 14px;
+}
+
+.kpi-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.kpi-card:hover {
+  border-color: #2e4468;
+}
+
+.kpi-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
   margin-bottom: 6px;
 }
 
-.badge {
-  display: inline-block;
-  border-radius: 6px;
-  padding: 6px 9px;
-  font-size: 11px;
+.kpi-value {
+  font-size: 26px;
   font-weight: 800;
-  text-transform: uppercase;
-  background: #203b34;
-  color: var(--green);
+  color: var(--text-main);
+  line-height: 1.2;
 }
 
-.route-card h4 { margin: 10px 0 8px; font-size: 15px; }
-
-.route-metrics {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 9px;
+.kpi-subtext {
+  font-size: 12px;
+  color: var(--text-dim);
   margin-top: 4px;
 }
 
-.metric-label { color: var(--muted); font-size: 11px; }
-.metric-value { margin-top: 5px; font-weight: 800; font-size: 14.5px; }
+/* Data Status & Environmental Panel */
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
 
-.map-panel { min-width: 0; }
+.status-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.status-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-card-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+
+.badge-freshness {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 12px;
+  text-transform: uppercase;
+}
+
+.badge-freshness.fresh {
+  background: var(--accent-green-bg);
+  color: var(--accent-green);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.badge-freshness.stale {
+  background: var(--accent-red-bg);
+  color: var(--accent-red);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.badge-freshness.unavailable {
+  background: var(--accent-amber-bg);
+  color: var(--accent-amber);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.status-detail-item {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.06);
+  padding-bottom: 4px;
+}
+
+.status-detail-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.status-detail-val {
+  color: var(--text-main);
+  font-weight: 600;
+}
+
+/* Main Workspace */
+.workspace {
+  display: grid;
+  grid-template-columns: 420px minmax(0, 1fr);
+  gap: 20px;
+  align-items: stretch;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.card-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.panel-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.panel-title p {
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+select {
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+select:focus {
+  border-color: var(--border-focus);
+}
+
+button.btn-primary {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: #032019;
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.1s ease;
+  box-shadow: 0 2px 10px rgba(16, 185, 129, 0.3);
+}
+
+button.btn-primary:hover:not(:disabled) {
+  opacity: 0.92;
+}
+
+button.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.alert-notice {
+  background: var(--bg-card-alt);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.alert-notice.error {
+  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.08);
+  color: #fca5a5;
+}
+
+/* Route Cards List */
+.route-list-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 520px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+/* Custom Scrollbar */
+.route-list-container::-webkit-scrollbar {
+  width: 5px;
+}
+.route-list-container::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+}
+.route-list-container::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 10px;
+}
+
+.route-card {
+  background: var(--bg-card-alt);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  position: relative;
+  overflow: hidden;
+}
+
+.route-card:hover {
+  border-color: #3b5278;
+  transform: translateY(-1px);
+}
+
+.route-card.active {
+  border-color: var(--accent-green);
+  background: #152438;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.route-card.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--accent-green);
+}
+
+.route-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.route-badge {
+  font-size: 11px;
+  font-weight: 800;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.route-badge.Fastest {
+  background: var(--accent-blue-bg);
+  color: var(--accent-blue);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.route-badge.Safest {
+  background: var(--accent-green-bg);
+  color: var(--accent-green);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.route-badge.Balanced {
+  background: var(--accent-purple-bg);
+  color: var(--accent-purple);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+}
+
+.route-badge.Alternative {
+  background: var(--accent-amber-bg);
+  color: var(--accent-amber);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.route-rank {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+.route-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 10px;
+  border-radius: var(--radius-sm);
+}
+
+.metric-cell {
+  display: flex;
+  flex-direction: column;
+}
+
+.metric-cell-label {
+  font-size: 10.5px;
+  color: var(--text-dim);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.metric-cell-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-top: 1px;
+}
+
+.route-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Map Panel */
+.map-container-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 650px;
+}
 
 .map-toolbar {
   padding: 16px 20px;
+  background: #0e1624;
+  border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 10px;
-  border-bottom: 1px solid var(--border);
+  gap: 12px;
 }
 
-.map-toolbar h3 { margin: 0; font-size: 16px; }
-
-.legend { display: flex; flex-wrap: wrap; gap: 14px; color: var(--muted); font-size: 12px; }
-.legend span { display: inline-flex; align-items: center; gap: 6px; }
-.swatch { width: 20px; height: 5px; border-radius: 6px; }
-
-#map { height: 640px; width: 100%; background: #dbe6e8; }
-
-.map-caption {
-  padding: 12px 20px;
-  font-size: 12.5px;
-  color: var(--muted);
-  line-height: 1.6;
+.map-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-main);
 }
 
-footer {
-  padding: 26px;
-  text-align: center;
-  color: var(--muted);
+.map-legend {
+  display: flex;
+  align-items: center;
+  gap: 16px;
   font-size: 12px;
+  color: var(--text-muted);
 }
 
-.error { color: var(--red); }
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
 
+.legend-swatch {
+  width: 16px;
+  height: 4px;
+  border-radius: 2px;
+}
+
+#map {
+  flex: 1;
+  width: 100%;
+  min-height: 520px;
+  background: #0e1726;
+}
+
+.map-footer {
+  padding: 14px 20px;
+  background: #0e1624;
+  border-top: 1px solid var(--border-color);
+  font-size: 12.5px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.map-footer-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.map-footer-tag {
+  background: var(--bg-card-alt);
+  border: 1px solid var(--border-color);
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--text-main);
+  font-weight: 600;
+}
+
+/* Footer */
+footer {
+  text-align: center;
+  padding: 24px 28px;
+  color: var(--text-dim);
+  font-size: 12px;
+  border-top: 1px solid var(--border-color);
+  margin-top: 10px;
+}
+
+/* Leaflet Dark Theme Adjustments */
 .leaflet-popup-content-wrapper, .leaflet-popup-tip {
-  background: #122035;
-  color: #edf4ff;
+  background: #111927 !important;
+  color: #f1f5f9 !important;
+  border: 1px solid #23344e !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5) !important;
 }
 
-@media (max-width: 950px) {
-  .workspace { grid-template-columns: 1fr; }
-  #map { height: 460px; }
+.leaflet-popup-content b {
+  color: #10b981;
 }
 
-@media (max-width: 520px) {
-  main { padding: 16px; }
-  header { padding: 14px; }
-  .stats { gap: 8px; }
-  .stat { padding: 14px; }
-  .stat .value { font-size: 22px; }
-  #map { height: 380px; }
-  .workspace { grid-template-columns: 1fr; }
+/* Responsive Breakpoints */
+@media (max-width: 1100px) {
+  .status-grid {
+    grid-template-columns: 1fr;
+  }
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+  #map {
+    min-height: 440px;
+  }
+}
+
+@media (max-width: 600px) {
+  main {
+    padding: 16px;
+  }
+  header {
+    padding: 12px 16px;
+  }
+  .kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .map-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 </style>
 </head>
 
 <body>
+
 <header>
   <div class="brand">
-    <div class="logo">S</div>
+    <div class="brand-icon">S</div>
     <div>
-      <h1>SafeRoute</h1>
-      <p>Spatio-Temporal Road Risk Intelligence</p>
+      <div class="brand-title">SafeRoute</div>
+      <div class="brand-subtitle">Chennai Road Risk Intelligence & Navigation</div>
     </div>
   </div>
-  <div class="status">
-    <span class="dot" id="statusDot"></span>
-    <span id="connectionStatus">Connecting to backend...</span>
+  <div class="backend-status">
+    <span class="status-dot" id="statusDot"></span>
+    <span id="statusText">Connecting...</span>
   </div>
 </header>
 
 <main>
+  <!-- Hero Section -->
   <section class="hero">
-    <h2>Choose a safer way through Chennai.</h2>
-    <p>Compare available routes using estimated travel time, distance and road-risk scores.</p>
-  </section>
-
-  <section class="stats">
-    <div class="stat">
-      <div class="label">TEST JOURNEYS</div>
-      <div class="value" id="journeyCount">—</div>
-    </div>
-    <div class="stat">
-      <div class="label">AVAILABLE RECOMMENDATIONS</div>
-      <div class="value" id="routeCount">—</div>
-    </div>
-    <div class="stat">
-      <div class="label">DATA SOURCE</div>
-      <div class="value" style="font-size:17px">Road-risk engine</div>
+    <div class="hero-text">
+      <h2>Chennai Safer Route Recommendation Platform</h2>
+      <p>
+        Spatio-temporal dynamic road risk mapping combining historical accident severity (50%),
+        live TomTom traffic congestion (30%), and Open-Meteo weather conditions (20%).
+      </p>
     </div>
   </section>
 
-  <section class="panel data-status-panel">
-    <div class="data-status-header">
-      <div>
-        <h3>Live Data Status</h3>
-        <p>Traffic and weather observation freshness</p>
+  <!-- Summary KPI Cards -->
+  <section class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-label">Test Journeys</div>
+      <div class="kpi-value" id="kpiJourneys">—</div>
+      <div class="kpi-subtext">Chennai corridors</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Recommendations</div>
+      <div class="kpi-value" id="kpiRoutes">—</div>
+      <div class="kpi-subtext">Ranked candidate routes</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Road Coverage</div>
+      <div class="kpi-value" id="kpiCoverage">—</div>
+      <div class="kpi-subtext" id="kpiCoverageSub">Open road segments</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Road Closures</div>
+      <div class="kpi-value" style="color: var(--accent-amber)" id="kpiClosures">—</div>
+      <div class="kpi-subtext">Confirmed closed segments</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Mean Dynamic Risk</div>
+      <div class="kpi-value" id="kpiMeanRisk">—</div>
+      <div class="kpi-subtext">Average score (0–100 scale)</div>
+    </div>
+  </section>
+
+  <!-- Environmental & Freshness Data Status Panel -->
+  <section class="status-grid">
+    <div class="status-card">
+      <div class="status-card-header">
+        <span class="status-card-title">TomTom Traffic Data</span>
+        <span class="badge-freshness" id="trafficBadge">Checking...</span>
       </div>
-      <span id="dataOverallStatus" class="unavailable">
-        Checking data...
-      </span>
+      <div class="status-detail-item">
+        <span>Collection Status</span>
+        <span class="status-detail-val" id="trafficStatusVal">—</span>
+      </div>
+      <div class="status-detail-item">
+        <span>Data Age</span>
+        <span class="status-detail-val" id="trafficAgeVal">—</span>
+      </div>
+      <div class="status-detail-item">
+        <span>Freshness Limit</span>
+        <span class="status-detail-val" id="trafficLimitVal">— min</span>
+      </div>
+      <div class="status-detail-item">
+        <span>Last Observation</span>
+        <span class="status-detail-val" id="trafficLastObs">—</span>
+      </div>
     </div>
 
-    <div class="data-status-grid">
-      <div class="data-status-card">
-        <div class="data-status-label">TOMTOM TRAFFIC</div>
-        <div class="data-status-value unavailable" id="trafficFreshness">
-          Checking...
-        </div>
-        <div class="data-status-detail" id="trafficDetails">
-          Waiting for API response.
-        </div>
+    <div class="status-card">
+      <div class="status-card-header">
+        <span class="status-card-title">Open-Meteo Weather Data</span>
+        <span class="badge-freshness" id="weatherBadge">Checking...</span>
       </div>
-
-      <div class="data-status-card">
-        <div class="data-status-label">WEATHER</div>
-        <div class="data-status-value unavailable" id="weatherFreshness">
-          Checking...
-        </div>
-        <div class="data-status-detail" id="weatherDetails">
-          Waiting for API response.
-        </div>
+      <div class="status-detail-item">
+        <span>Collection Status</span>
+        <span class="status-detail-val" id="weatherStatusVal">—</span>
       </div>
+      <div class="status-detail-item">
+        <span>Data Age</span>
+        <span class="status-detail-val" id="weatherAgeVal">—</span>
+      </div>
+      <div class="status-detail-item">
+        <span>Freshness Limit</span>
+        <span class="status-detail-val" id="weatherLimitVal">— min</span>
+      </div>
+      <div class="status-detail-item">
+        <span>Last Observation</span>
+        <span class="status-detail-val" id="weatherLastObs">—</span>
+      </div>
+    </div>
 
-      <div class="data-status-card">
-        <div class="data-status-label">ROAD RISK COVERAGE</div>
-        <div class="data-status-value unavailable" id="riskCoverage">
-          Checking...
-        </div>
-        <div class="data-status-detail" id="riskDetails">
-          Waiting for API response.
-        </div>
+    <div class="status-card">
+      <div class="status-card-header">
+        <span class="status-card-title">Risk Calculation Model</span>
+        <span class="badge-freshness fresh">50 / 30 / 20</span>
+      </div>
+      <div class="status-detail-item">
+        <span>Historical Accident Risk</span>
+        <span class="status-detail-val">50% weight</span>
+      </div>
+      <div class="status-detail-item">
+        <span>Live TomTom Traffic Risk</span>
+        <span class="status-detail-val">30% weight</span>
+      </div>
+      <div class="status-detail-item">
+        <span>Live Weather Conditions</span>
+        <span class="status-detail-val">20% weight</span>
+      </div>
+      <div class="status-detail-item">
+        <span>Closed Road Handling</span>
+        <span class="status-detail-val" style="color:var(--accent-amber)">Dynamic Risk = 100</span>
       </div>
     </div>
   </section>
 
+  <!-- Workspace: Sidebar Controls & Map -->
   <section class="workspace">
-    <div class="panel">
-      <div class="panel-heading">
-        <h3>Plan your journey</h3>
-        <p>Select one of the prepared Chennai test journeys.</p>
-      </div>
+    <div class="sidebar">
+      <div class="card-panel">
+        <div class="panel-title">
+          <div>
+            Journey Selector
+            <p>Select a corridor to view recommendations</p>
+          </div>
+        </div>
 
-      <div class="controls">
-        <label for="journeySelect">ORIGIN → DESTINATION</label>
-        <select id="journeySelect">
-          <option value="">Loading journeys...</option>
-        </select>
+        <div class="form-group">
+          <label for="journeySelect">Origin → Destination</label>
+          <select id="journeySelect">
+            <option value="">Loading journeys...</option>
+          </select>
+        </div>
 
-        <button id="showRoutes" disabled>Compare Routes</button>
+        <button class="btn-primary" id="btnCompare" disabled>Compare Routes</button>
 
-        <div class="notice" id="message">
-          Connecting to the SafeRoute API.
+        <div class="alert-notice" id="noticeMsg">
+          Connecting to SafeRoute API...
         </div>
       </div>
 
-      <div class="panel-heading">
-        <h3>Route recommendations</h3>
-        <p>Select a route card to display its road path.</p>
-      </div>
-      <div class="route-list" id="routeList">
-        <div class="notice">Routes will appear here.</div>
+      <div class="card-panel" style="flex: 1;">
+        <div class="panel-title">
+          <div>
+            Available Route Recommendations
+            <p>Click a route to highlight geometry on the map</p>
+          </div>
+        </div>
+
+        <div class="route-list-container" id="routeList">
+          <div class="alert-notice">Select a journey to display routes.</div>
+        </div>
       </div>
     </div>
 
-    <div class="panel map-panel">
+    <!-- Map Panel -->
+    <div class="map-container-panel">
       <div class="map-toolbar">
-        <h3>Chennai road map</h3>
-        <div class="legend">
-          <span><i class="swatch" style="background:#2588ff"></i>Fastest</span>
-          <span><i class="swatch" style="background:#20b981"></i>Safest</span>
-          <span><i class="swatch" style="background:#f5a623"></i>Alternative</span>
+        <div class="map-title" id="mapTitle">Chennai Interactive Map</div>
+        <div class="map-legend">
+          <div class="legend-item">
+            <div class="legend-swatch" style="background: var(--accent-blue);"></div>
+            <span>Fastest</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-swatch" style="background: var(--accent-green);"></div>
+            <span>Safest</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-swatch" style="background: var(--accent-purple);"></div>
+            <span>Balanced</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-swatch" style="background: var(--accent-amber);"></div>
+            <span>Alternative</span>
+          </div>
         </div>
       </div>
+
       <div id="map"></div>
-      <div class="map-caption" id="mapCaption">
-        Select a journey and compare available routes.
+
+      <div class="map-footer" id="mapFooter">
+        <div class="map-footer-info" id="mapFooterDetails">
+          <span>Select a route from the list to view metrics and geometry.</span>
+        </div>
       </div>
     </div>
   </section>
 </main>
 
 <footer>
-  SafeRoute · Academic prototype · Historical risk recommendations are estimates,
-  not a guarantee of road safety.
+  SafeRoute — Academic Prototype · Dynamic risk scores are relative estimates based on historical accident data,
+  live TomTom traffic, and Open-Meteo weather observations. They do not guarantee safety or predict accidents.
 </footer>
 
+<!-- Leaflet JS -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
 const API = window.location.origin;
+
 const COLORS = {
-  Fastest: "#2588ff",
-  Safest: "#20b981",
-  Balanced: "#a78bfa",
-  Alternative: "#f5a623"
+  Fastest: "#3b82f6",     // Blue
+  Safest: "#10b981",      // Emerald Green
+  Balanced: "#8b5cf6",    // Purple
+  Alternative: "#f59e0b"  // Amber
 };
 
-const map = L.map("map").setView([13.055, 80.22], 11);
+// Initialize Leaflet Map
+const map = L.map("map", {
+  zoomControl: true,
+  attributionControl: true
+}).setView([13.055, 80.22], 11);
 
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   maxZoom: 19,
@@ -495,358 +904,316 @@ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
 }).addTo(map);
 
 let journeys = [];
-let routeLayers = [];
-let selectedJourney = null;
+let activeLayers = [];
+let currentJourney = null;
 
 const $ = id => document.getElementById(id);
 
-function setMessage(message, error = false) {
-  $("message").textContent = message;
-  $("message").classList.toggle("error", error);
+function setNotice(message, isError = false) {
+  const el = $("noticeMsg");
+  el.textContent = message;
+  el.classList.toggle("error", isError);
 }
 
-function setStatus(message, good) {
-  $("connectionStatus").textContent = message;
-  $("statusDot").style.background = good ? "#42e6a4" : "#ff7373";
+function setStatus(online, message) {
+  const dot = $("statusDot");
+  const text = $("statusText");
+  text.textContent = message;
+  dot.className = "status-dot " + (online ? "online" : "offline");
 }
 
-function clearRouteLayers() {
-  routeLayers.forEach(layer => map.removeLayer(layer));
-  routeLayers = [];
+function clearMapLayers() {
+  activeLayers.forEach(l => map.removeLayer(l));
+  activeLayers = [];
 }
 
-function formatNumber(value, digits = 1) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n.toFixed(digits) : "—";
+function formatNum(val, decimals = 1) {
+  const n = Number(val);
+  return Number.isFinite(n) ? n.toFixed(decimals) : "—";
 }
 
-function freshnessClass(status) {
-  if (status === "FRESH") return "fresh";
-  if (status === "STALE") return "stale";
-  return "unavailable";
-}
-
-function formatAge(minutes) {
+function formatTimeAge(minutes) {
   const age = Number(minutes);
-
-  if (!Number.isFinite(age) || age < 0) {
-    return "Age unavailable";
-  }
-
-  if (age < 60) {
-    return `${Math.round(age)} minutes old`;
-  }
-
-  const hours = Math.floor(age / 60);
-  const remainingMinutes = Math.round(age % 60);
-
-  if (hours < 48) {
-    return `${hours}h ${remainingMinutes}m old`;
-  }
-
-  const days = Math.floor(hours / 24);
-  return `${days}d ${hours % 24}h old`;
+  if (!Number.isFinite(age) || age < 0) return "Unavailable";
+  if (age < 1) return "Just now";
+  if (age < 60) return `${Math.round(age)} mins ago`;
+  const hrs = Math.floor(age / 60);
+  const mins = Math.round(age % 60);
+  return `${hrs}h ${mins}m ago`;
 }
 
-async function loadDataStatus() {
+function formatTimestamp(tsStr) {
+  if (!tsStr) return "N/A";
   try {
-    const [statusResponse, summaryResponse] = await Promise.all([
+    const d = new Date(tsStr);
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  } catch (e) {
+    return tsStr;
+  }
+}
+
+function getRiskCategoryLabel(score) {
+  const n = Number(score);
+  if (!Number.isFinite(n)) return "Unknown";
+  if (n < 20) return "Low Risk";
+  if (n < 40) return "Moderate Risk";
+  if (n < 70) return "High Risk";
+  return "Severe Risk";
+}
+
+// Load Health, Summary & Data Status
+async function fetchSystemStatus() {
+  try {
+    const [healthRes, statusRes, summaryRes] = await Promise.all([
+      fetch(`${API}/api/health`),
       fetch(`${API}/api/data-status`),
       fetch(`${API}/api/dynamic-risk/summary`)
     ]);
 
-    if (!statusResponse.ok || !summaryResponse.ok) {
-      throw new Error("Could not load data-status information.");
+    if (healthRes.ok && statusRes.ok && summaryRes.ok) {
+      const health = await healthRes.json();
+      const status = await statusRes.json();
+      const summary = await summaryRes.json();
+
+      // KPIs
+      $("kpiJourneys").textContent = health.journey_count ?? "—";
+      $("kpiRoutes").textContent = health.recommendation_count ?? "—";
+
+      const complete = Number(summary.complete_risk_count) || 0;
+      const closed = Number(summary.closed_classification_count) || 0;
+      const total = Number(summary.road_segment_count) || 0;
+
+      $("kpiCoverage").textContent = `${complete.toLocaleString()} / ${total.toLocaleString()}`;
+      $("kpiCoverageSub").textContent = `${((complete/total)*100).toFixed(1)}% complete coverage`;
+      $("kpiClosures").textContent = closed.toLocaleString();
+      $("kpiMeanRisk").textContent = `${formatNum(summary.mean_dynamic_risk)} / 100`;
+
+      // Traffic Status
+      const tr = status.traffic || {};
+      $("trafficBadge").textContent = tr.freshness || "UNAVAILABLE";
+      $("trafficBadge").className = `badge-freshness ${(tr.freshness || '').toLowerCase()}`;
+      $("trafficStatusVal").textContent = tr.status || "UNKNOWN";
+      $("trafficAgeVal").textContent = formatTimeAge(tr.age_minutes);
+      $("trafficLimitVal").textContent = `${tr.threshold_minutes ?? 180} min`;
+      $("trafficLastObs").textContent = formatTimestamp(tr.observation_end);
+
+      // Weather Status
+      const wt = status.weather || {};
+      $("weatherBadge").textContent = wt.freshness || "UNAVAILABLE";
+      $("weatherBadge").className = `badge-freshness ${(wt.freshness || '').toLowerCase()}`;
+      $("weatherStatusVal").textContent = wt.status || "UNKNOWN";
+      $("weatherAgeVal").textContent = formatTimeAge(wt.age_minutes);
+      $("weatherLimitVal").textContent = `${wt.threshold_minutes ?? 60} min`;
+      $("weatherLastObs").textContent = formatTimestamp(wt.observation_end);
     }
-
-    const status = await statusResponse.json();
-    const summary = await summaryResponse.json();
-
-    const traffic = status.traffic || {};
-    const weather = status.weather || {};
-
-    $("trafficFreshness").textContent =
-      traffic.freshness || "UNAVAILABLE";
-
-    $("trafficFreshness").className =
-      `data-status-value ${freshnessClass(traffic.freshness)}`;
-
-    $("trafficDetails").textContent =
-      `Collection: ${traffic.status || "UNKNOWN"} · ` +
-      `${formatAge(traffic.age_minutes)} · ` +
-      `Limit: ${traffic.threshold_minutes ?? "—"} min`;
-
-    $("weatherFreshness").textContent =
-      weather.freshness || "UNAVAILABLE";
-
-    $("weatherFreshness").className =
-      `data-status-value ${freshnessClass(weather.freshness)}`;
-
-    $("weatherDetails").textContent =
-      `Collection: ${weather.status || "UNKNOWN"} · ` +
-      `${formatAge(weather.age_minutes)} · ` +
-      `Limit: ${weather.threshold_minutes ?? "—"} min`;
-
-    const complete = Number(summary.complete_risk_count) || 0;
-    const closed = Number(summary.closed_classification_count) || 0;
-    const total = Number(summary.road_segment_count) || 0;
-
-    $("riskCoverage").textContent =
-      `${complete.toLocaleString()} / ${total.toLocaleString()}`;
-
-    $("riskCoverage").className =
-      "data-status-value " +
-      (complete > 0 && total > 0 ? "fresh" : "unavailable");
-
-    $("riskDetails").textContent =
-      `${closed.toLocaleString()} segments classified as closed · ` +
-      `Mean risk: ${formatNumber(summary.mean_dynamic_risk)}/100`;
-
-    const allFresh =
-      traffic.freshness === "FRESH" &&
-      weather.freshness === "FRESH";
-
-    const allAvailable =
-      traffic.freshness &&
-      weather.freshness &&
-      traffic.freshness !== "UNAVAILABLE" &&
-      weather.freshness !== "UNAVAILABLE";
-
-    $("dataOverallStatus").textContent = allFresh
-      ? "DATA FRESH"
-      : allAvailable
-        ? "OUTDATED DATA"
-        : "DATA STATUS UNKNOWN";
-
-    $("dataOverallStatus").className =
-      allFresh ? "fresh" : allAvailable ? "stale" : "unavailable";
-
-  } catch (error) {
-    $("dataOverallStatus").textContent = "STATUS UNAVAILABLE";
-    $("dataOverallStatus").className = "unavailable";
-
-    $("trafficFreshness").textContent = "Unavailable";
-    $("weatherFreshness").textContent = "Unavailable";
-    $("riskCoverage").textContent = "Unavailable";
-
-    $("trafficDetails").textContent = "Could not retrieve traffic status.";
-    $("weatherDetails").textContent = "Could not retrieve weather status.";
-    $("riskDetails").textContent = "Could not retrieve road-risk summary.";
-
-    console.error("Data status error:", error);
+  } catch (err) {
+    console.error("System status error:", err);
   }
 }
 
-function riskDescription(value) {
-  const n = Number(value);
-  if (n < 20) return "Lower relative risk";
-  if (n < 40) return "Moderate relative risk";
-  return "Higher relative risk";
-}
-
+// Load Journeys
 async function loadJourneys() {
   try {
-    const [healthResponse, journeyResponse] = await Promise.all([
-      fetch(`${API}/api/health`),
-      fetch(`${API}/api/journeys`)
-    ]);
+    setStatus(false, "Connecting to backend...");
+    const res = await fetch(`${API}/api/journeys`);
+    if (!res.ok) throw new Error("Backend connection failed.");
 
-    if (!healthResponse.ok || !journeyResponse.ok) {
-      throw new Error("Backend returned an error. Check the terminal.");
-    }
-
-    const health = await healthResponse.json();
-    journeys = await journeyResponse.json();
-
-    $("journeyCount").textContent = health.journey_count;
-    $("routeCount").textContent = health.recommendation_count;
-
-    $("journeySelect").innerHTML = "";
-
-    journeys.forEach(journey => {
-      const option = document.createElement("option");
-      option.value = journey.test_id;
-      option.textContent =
-        `${journey.origin} → ${journey.destination}`;
-      $("journeySelect").appendChild(option);
-    });
-
-    $("showRoutes").disabled = journeys.length === 0;
-    setStatus("Backend connected", true);
-
-    if (journeys.length) {
-      await showRoutes();
-    } else {
-      setMessage("No journeys are available.", true);
-    }
-  } catch (error) {
-    setStatus("Backend disconnected", false);
-    setMessage(
-      "Could not load routes. Start the FastAPI server and refresh this page.",
-      true
-    );
-    console.error(error);
-  }
-}
-
-async function showRoutes() {
-  const testId = Number($("journeySelect").value);
-  if (!testId) return;
-
-  selectedJourney = journeys.find(j => j.test_id === testId);
-  $("showRoutes").disabled = true;
-  $("showRoutes").textContent = "Loading routes...";
-  $("routeList").innerHTML = "";
-  clearRouteLayers();
-
-  try {
-    const response = await fetch(`${API}/api/recommendations/${testId}`);
-    if (!response.ok) throw new Error(await response.text());
-
-    const routes = await response.json();
-
-    if (!routes.length) {
-      setMessage("No recommendations are available for this journey.", true);
+    journeys = await res.json();
+    if (!journeys.length) {
+      setNotice("No test journeys found in database.", true);
       return;
     }
 
-    routes.sort((a, b) =>
-      Number(a.candidate_rank) - Number(b.candidate_rank)
-    );
+    const select = $("journeySelect");
+    select.innerHTML = "";
 
-    routes.forEach(route => {
-      const risk = Number(route.distance_weighted_dynamic_risk);
-      const label = String(route.recommendation || "Alternative");
-      const card = document.createElement("div");
-
-      card.className = "route-card";
-      card.innerHTML = `
-        <div class="route-top">
-          <span class="badge">${label}</span>
-          <span style="color:var(--muted);font-size:11px">
-            Route ${route.candidate_rank}
-          </span>
-        </div>
-        <h4>${selectedJourney.origin} → ${selectedJourney.destination}</h4>
-        <div class="route-metrics">
-          <div>
-            <div class="metric-label">TIME</div>
-            <div class="metric-value">${formatNumber(route.travel_time_min)} min</div>
-          </div>
-          <div>
-            <div class="metric-label">DISTANCE</div>
-            <div class="metric-value">${formatNumber(route.distance_km)} km</div>
-          </div>
-          <div>
-            <div class="metric-label">RISK SCORE</div>
-            <div class="metric-value">${formatNumber(risk)}</div>
-          </div>
-        </div>
-        <div style="font-size:11px;color:var(--muted);margin-top:9px">
-          ${riskDescription(risk)}
-        </div>
-      `;
-
-      card.addEventListener("click", () => drawRoute(route, card));
-      $("routeList").appendChild(card);
+    journeys.forEach(j => {
+      const opt = document.createElement("option");
+      opt.value = j.test_id;
+      opt.textContent = `${j.origin} → ${j.destination} (${j.recommendation_count} routes)`;
+      select.appendChild(opt);
     });
 
-    setMessage(
-      `${routes.length} recommendations loaded. Select a card to display its road path.`
-    );
+    $("btnCompare").disabled = false;
+    setStatus(true, "API Online · v1.0.0");
+    setNotice("Select a journey and click Compare Routes.");
 
-    await drawRoute(routes[0], $("routeList").firstElementChild);
-  } catch (error) {
-    setMessage("Could not load recommendations. Check the backend logs.", true);
-    console.error(error);
-  } finally {
-    $("showRoutes").disabled = false;
-    $("showRoutes").textContent = "Compare Routes";
+    // Auto-load first journey
+    await handleJourneyChange();
+  } catch (err) {
+    setStatus(false, "API Offline");
+    setNotice("Could not connect to SafeRoute API server.", true);
+    console.error(err);
   }
 }
 
-async function drawRoute(route, card) {
-  document.querySelectorAll(".route-card").forEach(el =>
-    el.classList.remove("active")
-  );
-  if (card) card.classList.add("active");
+// Handle Journey Selection
+async function handleJourneyChange() {
+  const testId = Number($("journeySelect").value);
+  if (!testId) return;
 
-  clearRouteLayers();
-
-  const color = COLORS[String(route.recommendation)] || COLORS.Alternative;
-
-  setMessage(`Loading road geometry for Route ${route.candidate_rank}...`);
+  currentJourney = journeys.find(j => j.test_id === testId);
+  $("btnCompare").disabled = true;
+  setNotice(`Loading route recommendations for Journey ${testId}...`);
+  $("routeList").innerHTML = '<div class="alert-notice">Loading route recommendations...</div>';
+  clearMapLayers();
 
   try {
-    const response = await fetch(
-      `${API}/api/route/${route.test_id}/${route.candidate_rank}`
-    );
+    const res = await fetch(`${API}/api/recommendations/${testId}`);
+    if (!res.ok) throw new Error("Failed to retrieve recommendations.");
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(errorText);
+    const routes = await res.json();
+    if (!routes || !routes.length) {
+      $("routeList").innerHTML = '<div class="alert-notice error">No route recommendations found.</div>';
+      setNotice("No route recommendations found.", true);
+      return;
     }
 
-    const data = await response.json();
+    routes.sort((a, b) => Number(a.candidate_rank) - Number(b.candidate_rank));
 
+    $("routeList").innerHTML = "";
+
+    routes.forEach(r => {
+      const recType = String(r.recommendation || "Alternative");
+      const riskScore = Number(r.distance_weighted_dynamic_risk);
+      const timeMin = Number(r.travel_time_min);
+      const distKm = Number(r.distance_km);
+
+      const card = document.createElement("div");
+      card.className = "route-card";
+      card.dataset.rank = r.candidate_rank;
+
+      card.innerHTML = `
+        <div class="route-header">
+          <span class="route-badge ${recType}">${recType}</span>
+          <span class="route-rank">Rank ${r.candidate_rank}</span>
+        </div>
+        <div class="route-metrics-grid">
+          <div class="metric-cell">
+            <span class="metric-cell-label">Time</span>
+            <span class="metric-cell-value">${formatNum(timeMin)} min</span>
+          </div>
+          <div class="metric-cell">
+            <span class="metric-cell-label">Distance</span>
+            <span class="metric-cell-value">${formatNum(distKm)} km</span>
+          </div>
+          <div class="metric-cell">
+            <span class="metric-cell-label">Risk Score</span>
+            <span class="metric-cell-value">${formatNum(riskScore)}</span>
+          </div>
+        </div>
+        <div class="route-desc">
+          <span>${getRiskCategoryLabel(riskScore)}</span>
+          <span style="font-size:11px; color:var(--text-dim)">Click to highlight</span>
+        </div>
+      `;
+
+      card.addEventListener("click", () => renderRouteOnMap(r, card));
+      $("routeList").appendChild(card);
+    });
+
+    setNotice(`Loaded ${routes.length} route options for ${currentJourney.origin} → ${currentJourney.destination}.`);
+
+    // Draw first route candidate by default
+    if (routes.length > 0) {
+      await renderRouteOnMap(routes[0], $("routeList").firstElementChild);
+    }
+  } catch (err) {
+    setNotice("Error loading route recommendations.", true);
+    $("routeList").innerHTML = '<div class="alert-notice error">Failed to load recommendations.</div>';
+    console.error(err);
+  } finally {
+    $("btnCompare").disabled = false;
+  }
+}
+
+// Render Route Polylines and Markers on Leaflet Map
+async function renderRouteOnMap(route, cardElement) {
+  // Update active state in UI list
+  document.querySelectorAll(".route-card").forEach(el => el.classList.remove("active"));
+  if (cardElement) cardElement.classList.add("active");
+
+  clearMapLayers();
+
+  const recType = String(route.recommendation || "Alternative");
+  const color = COLORS[recType] || COLORS.Alternative;
+
+  setNotice(`Fetching road geometry for Route ${route.candidate_rank} (${recType})...`);
+
+  try {
+    const res = await fetch(`${API}/api/route/${route.test_id}/${route.candidate_rank}`);
+    if (!res.ok) throw new Error("Could not fetch route geometry.");
+
+    const data = await res.json();
     if (!data.coordinates || data.coordinates.length < 2) {
-      throw new Error("The route has insufficient geometry.");
+      throw new Error("Invalid route geometry returned.");
     }
 
+    // Polyline
     const line = L.polyline(data.coordinates, {
-      color,
+      color: color,
       weight: 6,
       opacity: 0.9,
       lineCap: "round",
       lineJoin: "round"
     }).addTo(map);
 
-    routeLayers.push(line);
+    activeLayers.push(line);
 
-    const start = data.coordinates[0];
-    const end = data.coordinates[data.coordinates.length - 1];
+    // Origin & Destination Markers
+    const startCoord = data.coordinates[0];
+    const endCoord = data.coordinates[data.coordinates.length - 1];
 
-    const startMarker = L.circleMarker(start, {
-      radius: 7,
+    const originMarker = L.circleMarker(startCoord, {
+      radius: 8,
       color: "#ffffff",
       weight: 2,
-      fillColor: "#2588ff",
+      fillColor: "#3b82f6",
       fillOpacity: 1
     }).addTo(map).bindPopup(`<b>Origin</b><br>${data.origin}`);
 
-    const endMarker = L.circleMarker(end, {
-      radius: 7,
+    const destMarker = L.circleMarker(endCoord, {
+      radius: 8,
       color: "#ffffff",
       weight: 2,
-      fillColor: "#ff7373",
+      fillColor: "#ef4444",
       fillOpacity: 1
     }).addTo(map).bindPopup(`<b>Destination</b><br>${data.destination}`);
 
-    routeLayers.push(startMarker, endMarker);
+    activeLayers.push(originMarker, destMarker);
 
-    map.fitBounds(line.getBounds(), {padding: [30, 30]});
+    // Fit map bounds
+    map.fitBounds(line.getBounds(), { padding: [40, 40] });
+    map.invalidateSize();
 
-    $("mapCaption").textContent =
-      `${data.recommendation} route · ${formatNumber(data.distance_km)} km · ` +
-      `${formatNumber(data.travel_time_min)} minutes · ` +
-      `Risk score: ${formatNumber(data.risk_score)}. ` +
-      `Travel times are estimates; live traffic integration has not yet been verified.`;
+    // Update map header & footer
+    $("mapTitle").textContent = `${data.origin} → ${data.destination} (${recType} Route)`;
 
-    setMessage(`Displaying Route ${route.candidate_rank} on the map.`);
-  } catch (error) {
-    setMessage(
-      "Could not display road geometry. The backend may still be loading the road graph.",
-      true
-    );
-    console.error(error);
+    $("mapFooterDetails").innerHTML = `
+      <span class="map-footer-tag">${recType}</span>
+      <span><b>${formatNum(data.travel_time_min)} mins</b></span>
+      <span><b>${formatNum(data.distance_km)} km</b></span>
+      <span>Dynamic Risk: <b>${formatNum(data.risk_score)} / 100</b> (${getRiskCategoryLabel(data.risk_score)})</span>
+    `;
+
+    setNotice(`Displaying Route ${route.candidate_rank} (${recType}) on map.`);
+  } catch (err) {
+    setNotice("Failed to load map route geometry.", true);
+    console.error(err);
   }
 }
 
-$("showRoutes").addEventListener("click", showRoutes);
-$("journeySelect").addEventListener("change", showRoutes);
+// Event Listeners
+$("btnCompare").addEventListener("click", handleJourneyChange);
+$("journeySelect").addEventListener("change", handleJourneyChange);
 
+window.addEventListener("resize", () => {
+  map.invalidateSize();
+});
+
+// Initialize Dashboard
+fetchSystemStatus();
 loadJourneys();
-loadDataStatus();
 </script>
 </body>
 </html>
