@@ -30,6 +30,8 @@
   --accent-amber-bg: rgba(245, 158, 11, 0.15);
   --accent-red: #ef4444;
   --accent-red-bg: rgba(239, 68, 68, 0.15);
+  --accent-slate: #64748b;
+  --accent-slate-bg: rgba(100, 116, 139, 0.15);
 
   --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --radius-lg: 14px;
@@ -289,7 +291,7 @@ main {
 /* Main Workspace */
 .workspace {
   display: grid;
-  grid-template-columns: 420px minmax(0, 1fr);
+  grid-template-columns: 460px minmax(0, 1fr);
   gap: 20px;
   align-items: stretch;
 }
@@ -395,17 +397,42 @@ button.btn-primary:disabled {
   color: #fca5a5;
 }
 
+.alert-notice.info {
+  border-color: rgba(59, 130, 246, 0.4);
+  background: rgba(59, 130, 246, 0.08);
+  color: #93c5fd;
+}
+
+/* Loading state */
+.loader {
+  display: flex;
+  gap: 8px;
+  padding: 14px;
+}
+.loader span {
+  width: 10px;
+  height: 10px;
+  background: var(--text-muted);
+  border-radius: 50%;
+  animation: bounce 1.4s infinite ease-in-out both;
+}
+.loader span:nth-child(2) { animation-delay: 0.2s; }
+.loader span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
 /* Route Cards List */
 .route-list-container {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-height: 520px;
+  max-height: 300px;
   overflow-y: auto;
   padding-right: 4px;
 }
 
-/* Custom Scrollbar */
 .route-list-container::-webkit-scrollbar {
   width: 5px;
 }
@@ -422,12 +449,12 @@ button.btn-primary:disabled {
   background: var(--bg-card-alt);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
-  padding: 14px 16px;
+  padding: 12px 14px;
   cursor: pointer;
   transition: all 0.15s ease;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   position: relative;
   overflow: hidden;
 }
@@ -460,12 +487,12 @@ button.btn-primary:disabled {
 }
 
 .route-badge {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 800;
-  padding: 4px 10px;
+  padding: 3px 8px;
   border-radius: var(--radius-sm);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.4px;
 }
 
 .route-badge.Fastest {
@@ -492,8 +519,14 @@ button.btn-primary:disabled {
   border: 1px solid rgba(245, 158, 11, 0.3);
 }
 
+.route-badge.Weather-Aware {
+  background: var(--accent-slate-bg);
+  color: #94a3b8;
+  border: 1px solid rgba(100, 116, 139, 0.3);
+}
+
 .route-rank {
-  font-size: 11.5px;
+  font-size: 11px;
   color: var(--text-dim);
   font-weight: 600;
 }
@@ -501,9 +534,9 @@ button.btn-primary:disabled {
 .route-metrics-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+  gap: 6px;
   background: rgba(0, 0, 0, 0.2);
-  padding: 10px;
+  padding: 8px;
   border-radius: var(--radius-sm);
 }
 
@@ -513,21 +546,21 @@ button.btn-primary:disabled {
 }
 
 .metric-cell-label {
-  font-size: 10.5px;
+  font-size: 10px;
   color: var(--text-dim);
   font-weight: 600;
   text-transform: uppercase;
 }
 
 .metric-cell-value {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
   color: var(--text-main);
   margin-top: 1px;
 }
 
 .route-desc {
-  font-size: 12px;
+  font-size: 11.5px;
   color: var(--text-muted);
   display: flex;
   align-items: center;
@@ -565,9 +598,10 @@ button.btn-primary:disabled {
 .map-legend {
   display: flex;
   align-items: center;
-  gap: 16px;
-  font-size: 12px;
+  gap: 14px;
+  font-size: 11.5px;
   color: var(--text-muted);
+  flex-wrap: wrap;
 }
 
 .legend-item {
@@ -616,6 +650,89 @@ button.btn-primary:disabled {
   border-radius: var(--radius-sm);
   color: var(--text-main);
   font-weight: 600;
+}
+
+/* Risk Analysis Panel */
+.risk-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.risk-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12.5px;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.06);
+  padding: 6px 0;
+}
+
+.risk-row:last-child {
+  border-bottom: none;
+}
+
+.risk-row-label {
+  color: var(--text-muted);
+}
+
+.risk-row-value {
+  color: var(--text-main);
+  font-weight: 700;
+}
+
+.risk-bar {
+  height: 6px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 4px;
+}
+
+.risk-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+}
+
+.risk-note {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  border-top: 1px dashed rgba(255,255,255,0.06);
+  padding-top: 8px;
+  line-height: 1.5;
+}
+
+/* Traffic & Weather Details */
+.condition-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.condition-item {
+  background: var(--bg-card-alt);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+}
+
+.condition-item-label {
+  font-size: 10.5px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.condition-item-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.condition-item-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
 }
 
 /* Footer */
@@ -667,6 +784,9 @@ footer {
     flex-direction: column;
     align-items: flex-start;
   }
+  .condition-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
 </head>
@@ -693,8 +813,9 @@ footer {
     <div class="hero-text">
       <h2>Chennai Safer Route Recommendation Platform</h2>
       <p>
-        Spatio-temporal dynamic road risk mapping combining historical accident severity (50%),
+        Dynamic road-risk mapping combining historical accident severity (50%),
         live TomTom traffic congestion (30%), and Open-Meteo weather conditions (20%).
+        Multiple feasible routes are computed from real edge costs and compared.
       </p>
     </div>
   </section>
@@ -707,19 +828,19 @@ footer {
       <div class="kpi-subtext">Chennai corridors</div>
     </div>
     <div class="kpi-card">
-      <div class="kpi-label">Recommendations</div>
+      <div class="kpi-label">Route Options</div>
       <div class="kpi-value" id="kpiRoutes">—</div>
-      <div class="kpi-subtext">Ranked candidate routes</div>
+      <div class="kpi-subtext">Computed per journey</div>
     </div>
     <div class="kpi-card">
       <div class="kpi-label">Road Coverage</div>
       <div class="kpi-value" id="kpiCoverage">—</div>
-      <div class="kpi-subtext" id="kpiCoverageSub">Open road segments</div>
+      <div class="kpi-subtext" id="kpiCoverageSub">Segments with risk data</div>
     </div>
     <div class="kpi-card">
       <div class="kpi-label">Road Closures</div>
       <div class="kpi-value" style="color: var(--accent-amber)" id="kpiClosures">—</div>
-      <div class="kpi-subtext">Confirmed closed segments</div>
+      <div class="kpi-subtext">Excluded from routing</div>
     </div>
     <div class="kpi-card">
       <div class="kpi-label">Mean Dynamic Risk</div>
@@ -795,7 +916,7 @@ footer {
       </div>
       <div class="status-detail-item">
         <span>Closed Road Handling</span>
-        <span class="status-detail-val" style="color:var(--accent-amber)">Dynamic Risk = 100</span>
+        <span class="status-detail-val" style="color:var(--accent-amber)">Excluded from routing</span>
       </div>
     </div>
   </section>
@@ -825,16 +946,92 @@ footer {
         </div>
       </div>
 
-      <div class="card-panel" style="flex: 1;">
+      <div class="card-panel" style="flex: 1; min-height: 0;">
         <div class="panel-title">
           <div>
-            Available Route Recommendations
-            <p>Click a route to highlight geometry on the map</p>
+            Route Options
+            <p>Click a route to highlight it on the map</p>
           </div>
         </div>
 
         <div class="route-list-container" id="routeList">
-          <div class="alert-notice">Select a journey to display routes.</div>
+          <div class="alert-notice">Select a journey and click Compare Routes.</div>
+        </div>
+      </div>
+
+      <!-- Risk Analysis Panel -->
+      <div class="card-panel" id="riskAnalysisPanel" style="display:none; min-height: 0;">
+        <div class="panel-title">
+          <div>
+            Risk Analysis — <span id="riskAnalysisCategory">Selected Route</span>
+            <p>Component scores that drive the selected route's risk</p>
+          </div>
+        </div>
+
+        <div class="risk-breakdown">
+          <div class="risk-row">
+            <span class="risk-row-label">Combined route risk</span>
+            <span class="risk-row-value" id="raCombinedRisk">—</span>
+          </div>
+          <div class="risk-row">
+            <span class="risk-row-label">Historical accident risk</span>
+            <span class="risk-row-value" id="raHistoricalRisk">—</span>
+          </div>
+          <div class="risk-row">
+            <span class="risk-row-label">Traffic risk</span>
+            <span class="risk-row-value" id="raTrafficRisk">—</span>
+          </div>
+          <div class="risk-row">
+            <span class="risk-row-label">Weather risk</span>
+            <span class="risk-row-value" id="raWeatherRisk">—</span>
+          </div>
+          <div class="risk-row">
+            <span class="risk-row-label">Data coverage (observed)</span>
+            <span class="risk-row-value" id="raObservedCoverage">—</span>
+          </div>
+          <div class="risk-row">
+            <span class="risk-row-label">Road segments</span>
+            <span class="risk-row-value" id="raEdgeCount">—</span>
+          </div>
+        </div>
+
+        <div class="risk-note" id="riskAnalysisNote">
+          Risk scores are relative prototype estimates (0–100), not calibrated accident
+          probabilities. Missing observations are reported explicitly and are never treated
+          as zero risk.
+        </div>
+      </div>
+
+      <!-- Traffic & Weather Details -->
+      <div class="card-panel" id="trafficWeatherPanel" style="display:none; min-height: 0;">
+        <div class="panel-title">
+          <div>
+            Traffic & Weather Conditions
+            <p>Observed data used along the selected route</p>
+          </div>
+        </div>
+
+        <div class="condition-grid">
+          <div class="condition-item">
+            <div class="condition-item-label">Average congestion</div>
+            <div class="condition-item-value" id="cwCongestion">—</div>
+            <div class="condition-item-sub" id="cwCongestionCat">—</div>
+          </div>
+          <div class="condition-item">
+            <div class="condition-item-label">Traffic observation</div>
+            <div class="condition-item-value" id="cwTrafficObs">—</div>
+            <div class="condition-item-sub" id="cwTrafficObsSub">—</div>
+          </div>
+          <div class="condition-item">
+            <div class="condition-item-label">Weather observation</div>
+            <div class="condition-item-value" id="cwWeatherObs">—</div>
+            <div class="condition-item-sub" id="cwWeatherObsSub">—</div>
+          </div>
+          <div class="condition-item">
+            <div class="condition-item-label">Observation sources</div>
+            <div class="condition-item-value" id="cwSources">—</div>
+            <div class="condition-item-sub" id="cwSourcesSub">observed vs propagated</div>
+          </div>
         </div>
       </div>
     </div>
@@ -859,6 +1056,10 @@ footer {
           <div class="legend-item">
             <div class="legend-swatch" style="background: var(--accent-amber);"></div>
             <span>Alternative</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-swatch" style="background: #94a3b8;"></div>
+            <span>Weather-Aware</span>
           </div>
         </div>
       </div>
@@ -889,8 +1090,11 @@ const COLORS = {
   Fastest: "#3b82f6",     // Blue
   Safest: "#10b981",      // Emerald Green
   Balanced: "#8b5cf6",    // Purple
-  Alternative: "#f59e0b"  // Amber
+  Alternative: "#f59e0b", // Amber
+  "Weather-Aware": "#94a3b8" // Slate
 };
+
+const CATEGORY_ORDER = ["Fastest Route", "Safest Route", "Balanced Route", "Alternative Route", "Weather-Aware Route"];
 
 // Initialize Leaflet Map
 const map = L.map("map", {
@@ -906,6 +1110,8 @@ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
 let journeys = [];
 let activeLayers = [];
 let currentJourney = null;
+let currentRoutes = [];
+let selectedRoute = null;
 
 const $ = id => document.getElementById(id);
 
@@ -961,6 +1167,15 @@ function getRiskCategoryLabel(score) {
   return "Severe Risk";
 }
 
+function riskBarColor(score) {
+  const n = Number(score);
+  if (!Number.isFinite(n)) return "#94a3b8";
+  if (n < 20) return "var(--accent-green)";
+  if (n < 40) return "var(--accent-amber)";
+  if (n < 70) return "#f97316";
+  return "var(--accent-red)";
+}
+
 // Load Health, Summary & Data Status
 async function fetchSystemStatus() {
   try {
@@ -975,7 +1190,6 @@ async function fetchSystemStatus() {
       const status = await statusRes.json();
       const summary = await summaryRes.json();
 
-      // KPIs
       $("kpiJourneys").textContent = health.journey_count ?? "—";
       $("kpiRoutes").textContent = health.recommendation_count ?? "—";
 
@@ -984,11 +1198,10 @@ async function fetchSystemStatus() {
       const total = Number(summary.road_segment_count) || 0;
 
       $("kpiCoverage").textContent = `${complete.toLocaleString()} / ${total.toLocaleString()}`;
-      $("kpiCoverageSub").textContent = `${((complete/total)*100).toFixed(1)}% complete coverage`;
+      $("kpiCoverageSub").textContent = total ? `${((complete/total)*100).toFixed(1)}% complete coverage` : "—";
       $("kpiClosures").textContent = closed.toLocaleString();
       $("kpiMeanRisk").textContent = `${formatNum(summary.mean_dynamic_risk)} / 100`;
 
-      // Traffic Status
       const tr = status.traffic || {};
       $("trafficBadge").textContent = tr.freshness || "UNAVAILABLE";
       $("trafficBadge").className = `badge-freshness ${(tr.freshness || '').toLowerCase()}`;
@@ -997,7 +1210,6 @@ async function fetchSystemStatus() {
       $("trafficLimitVal").textContent = `${tr.threshold_minutes ?? 180} min`;
       $("trafficLastObs").textContent = formatTimestamp(tr.observation_end);
 
-      // Weather Status
       const wt = status.weather || {};
       $("weatherBadge").textContent = wt.freshness || "UNAVAILABLE";
       $("weatherBadge").className = `badge-freshness ${(wt.freshness || '').toLowerCase()}`;
@@ -1020,7 +1232,7 @@ async function loadJourneys() {
 
     journeys = await res.json();
     if (!journeys.length) {
-      setNotice("No test journeys found in database.", true);
+      setNotice("No test journeys found.", true);
       return;
     }
 
@@ -1037,9 +1249,6 @@ async function loadJourneys() {
     $("btnCompare").disabled = false;
     setStatus(true, "API Online · v1.0.0");
     setNotice("Select a journey and click Compare Routes.");
-
-    // Auto-load first journey
-    await handleJourneyChange();
   } catch (err) {
     setStatus(false, "API Offline");
     setNotice("Could not connect to SafeRoute API server.", true);
@@ -1047,165 +1256,264 @@ async function loadJourneys() {
   }
 }
 
-// Handle Journey Selection
-async function handleJourneyChange() {
-  const testId = Number($("journeySelect").value);
-  if (!testId) return;
-
-  currentJourney = journeys.find(j => j.test_id === testId);
-  $("btnCompare").disabled = true;
-  setNotice(`Loading route recommendations for Journey ${testId}...`);
-  $("routeList").innerHTML = '<div class="alert-notice">Loading route recommendations...</div>';
+// Fetch route options for a journey
+async function fetchRoutes(testId) {
+  const list = $("routeList");
+  list.innerHTML = '<div class="loader"><span></span><span></span><span></span></div>';
+  setNotice(`Computing route options for Journey ${testId}...`);
   clearMapLayers();
+  selectedRoute = null;
+  currentRoutes = [];
+  $("riskAnalysisPanel").style.display = "none";
+  $("trafficWeatherPanel").style.display = "none";
 
   try {
-    const res = await fetch(`${API}/api/recommendations/${testId}`);
-    if (!res.ok) throw new Error("Failed to retrieve recommendations.");
+    const res = await fetch(`${API}/api/routes/${testId}`);
+    if (!res.ok) throw new Error("Failed to retrieve route options.");
 
-    const routes = await res.json();
-    if (!routes || !routes.length) {
-      $("routeList").innerHTML = '<div class="alert-notice error">No route recommendations found.</div>';
-      setNotice("No route recommendations found.", true);
+    const body = await res.json();
+    currentRoutes = body.routes || [];
+    currentJourney = journeys.find(j => j.test_id === testId) || { origin: body.origin, destination: body.destination };
+
+    if (!currentRoutes.length) {
+      list.innerHTML = '<div class="alert-notice error">No feasible routes found for this journey.</div>';
+      setNotice("No feasible routes found.", true);
+      $("kpiRoutes").textContent = "0";
       return;
     }
 
-    routes.sort((a, b) => Number(a.candidate_rank) - Number(b.candidate_rank));
+    // Order categories consistently.
+    currentRoutes.sort((a, b) => {
+      const ia = CATEGORY_ORDER.indexOf(a.category);
+      const ib = CATEGORY_ORDER.indexOf(b.category);
+      if (ia !== ib) return ia - ib;
+      return Number(a.travel_time_min) - Number(b.travel_time_min);
+    });
 
-    $("routeList").innerHTML = "";
+    $("kpiRoutes").textContent = currentRoutes.length;
 
-    routes.forEach(r => {
-      const recType = String(r.recommendation || "Alternative");
-      const riskScore = Number(r.distance_weighted_dynamic_risk);
-      const timeMin = Number(r.travel_time_min);
-      const distKm = Number(r.distance_km);
-
+    list.innerHTML = "";
+    currentRoutes.forEach((r, idx) => {
       const card = document.createElement("div");
-      card.className = "route-card";
-      card.dataset.rank = r.candidate_rank;
+      card.className = "route-card" + (idx === 0 ? " active" : "");
+      card.dataset.idx = idx;
+
+      const risk = Number(r.distance_weighted_combined_risk);
+      const time = Number(r.travel_time_min);
+      const dist = Number(r.distance_km);
 
       card.innerHTML = `
         <div class="route-header">
-          <span class="route-badge ${recType}">${recType}</span>
-          <span class="route-rank">Rank ${r.candidate_rank}</span>
+          <span class="route-badge ${r.category}">${r.category}</span>
+          <span class="route-rank">Option ${idx + 1}</span>
         </div>
         <div class="route-metrics-grid">
           <div class="metric-cell">
             <span class="metric-cell-label">Time</span>
-            <span class="metric-cell-value">${formatNum(timeMin)} min</span>
+            <span class="metric-cell-value">${formatNum(time)} min</span>
           </div>
           <div class="metric-cell">
             <span class="metric-cell-label">Distance</span>
-            <span class="metric-cell-value">${formatNum(distKm)} km</span>
+            <span class="metric-cell-value">${formatNum(dist)} km</span>
           </div>
           <div class="metric-cell">
-            <span class="metric-cell-label">Risk Score</span>
-            <span class="metric-cell-value">${formatNum(riskScore)}</span>
+            <span class="metric-cell-label">Risk</span>
+            <span class="metric-cell-value">${formatNum(risk)}</span>
           </div>
         </div>
         <div class="route-desc">
-          <span>${getRiskCategoryLabel(riskScore)}</span>
-          <span style="font-size:11px; color:var(--text-dim)">Click to highlight</span>
+          <span>${getRiskCategoryLabel(risk)}</span>
+          <span style="font-size:10px; color:var(--text-dim)">Click to highlight</span>
         </div>
       `;
 
-      card.addEventListener("click", () => renderRouteOnMap(r, card));
-      $("routeList").appendChild(card);
+      card.addEventListener("click", () => selectRoute(idx));
+      list.appendChild(card);
     });
 
-    setNotice(`Loaded ${routes.length} route options for ${currentJourney.origin} → ${currentJourney.destination}.`);
+    // Select the first route by default.
+    selectRoute(0);
 
-    // Draw first route candidate by default
-    if (routes.length > 0) {
-      await renderRouteOnMap(routes[0], $("routeList").firstElementChild);
-    }
+    setNotice(`Loaded ${currentRoutes.length} route options for ${currentJourney.origin} → ${currentJourney.destination}.`);
   } catch (err) {
-    setNotice("Error loading route recommendations.", true);
-    $("routeList").innerHTML = '<div class="alert-notice error">Failed to load recommendations.</div>';
+    setNotice("Error loading route options.", true);
+    list.innerHTML = '<div class="alert-notice error">Failed to load route options.</div>';
     console.error(err);
-  } finally {
-    $("btnCompare").disabled = false;
   }
 }
 
-// Render Route Polylines and Markers on Leaflet Map
-async function renderRouteOnMap(route, cardElement) {
-  // Update active state in UI list
-  document.querySelectorAll(".route-card").forEach(el => el.classList.remove("active"));
-  if (cardElement) cardElement.classList.add("active");
+function selectRoute(idx) {
+  selectedRoute = currentRoutes[idx];
+  if (!selectedRoute) return;
 
+  // Update active card state.
+  document.querySelectorAll(".route-card").forEach((el, i) => {
+    el.classList.toggle("active", i === idx);
+  });
+
+  // Update risk analysis panel.
+  const ra = $("riskAnalysisPanel");
+  ra.style.display = "block";
+  $("riskAnalysisCategory").textContent = selectedRoute.category;
+  $("raCombinedRisk").textContent = formatNum(selectedRoute.distance_weighted_combined_risk);
+  $("raHistoricalRisk").textContent = formatNum(selectedRoute.distance_weighted_historical_risk);
+  $("raTrafficRisk").textContent = formatNum(selectedRoute.distance_weighted_traffic_risk);
+  $("raWeatherRisk").textContent = formatNum(selectedRoute.distance_weighted_weather_risk);
+  $("raObservedCoverage").textContent = selectedRoute.observed_coverage_percent != null ? selectedRoute.observed_coverage_percent + "%" : "—";
+  $("raEdgeCount").textContent = selectedRoute.edge_count ?? "—";
+  const reasons = [];
+  if (selectedRoute.selection_reason) reasons.push(selectedRoute.selection_reason);
+  if (selectedRoute.observed_coverage_percent != null && selectedRoute.observed_coverage_percent < 100) {
+    reasons.push(`Only ${selectedRoute.observed_coverage_percent.toFixed(0)}% of segments use observed data; remainder uses propagated baseline.`);
+  }
+  if (selectedRoute.time_overhead_percent_vs_fastest != null && selectedRoute.category === "Safest Route") {
+    reasons.push(`${selectedRoute.time_overhead_percent_vs_fastest.toFixed(0)}% longer than the fastest route.`);
+  }
+  $("riskAnalysisNote").textContent = (reasons.length ? reasons.join(" ") : "") || "Risk scores are relative prototype estimates (0–100), not calibrated accident probabilities.";
+
+  // Traffic & Weather panel.
+  const cw = $("trafficWeatherPanel");
+  cw.style.display = "block";
+  const trafficRisk = selectedRoute.avg_traffic_risk;
+  const weatherRisk = selectedRoute.avg_weather_risk;
+  const cong = selectedRoute.congestion_ratio;
+  const cats = selectedRoute.congestion_categories || [];
+  const topCat = cats.length ? cats[cats.length - 1] : null;
+
+  if (cong != null) {
+    $("cwCongestion").textContent = (cong * 100).toFixed(0) + "% above free-flow";
+    $("cwCongestionCat").textContent = topCat ? `Peak: ${topCat}` : "—";
+  } else if (trafficRisk != null) {
+    $("cwCongestion").textContent = trafficRisk.toFixed(0) + "% risk (propagated)";
+    $("cwCongestionCat").textContent = topCat ? `Peak: ${topCat}` : "No live traffic — baseline estimate";
+  } else {
+    $("cwCongestion").textContent = "—";
+    $("cwCongestionCat").textContent = "No traffic data";
+  }
+
+  const trafficTime = selectedRoute.traffic_observation_time;
+  if (trafficTime) {
+    $("cwTrafficObs").textContent = formatTimestamp(trafficTime);
+    $("cwTrafficObsSub").textContent = "TomTom (live)";
+  } else if (trafficRisk != null) {
+    $("cwTrafficObs").textContent = trafficRisk.toFixed(0) + "% risk";
+    $("cwTrafficObsSub").textContent = "Propagated baseline";
+  } else {
+    $("cwTrafficObs").textContent = "—";
+    $("cwTrafficObsSub").textContent = "No traffic data";
+  }
+
+  const weatherTime = selectedRoute.weather_observation_time;
+  if (weatherTime) {
+    $("cwWeatherObs").textContent = formatTimestamp(weatherTime);
+    $("cwWeatherObsSub").textContent = "Open-Meteo (live)";
+  } else if (weatherRisk != null) {
+    $("cwWeatherObs").textContent = weatherRisk.toFixed(0) + "% risk";
+    $("cwWeatherObsSub").textContent = "Propagated baseline";
+  } else {
+    $("cwWeatherObs").textContent = "—";
+    $("cwWeatherObsSub").textContent = "No weather data";
+  }
+
+  const sources = selectedRoute.observation_sources || [];
+  const obsPct = selectedRoute.observed_coverage_percent != null ? selectedRoute.observed_coverage_percent : 0;
+  const dataPct = selectedRoute.data_coverage_percent != null ? selectedRoute.data_coverage_percent : 0;
+  let sourceLabel = "—";
+  let sourceSub = "observed vs propagated";
+  if (sources.length === 0) {
+    sourceLabel = "No data";
+    sourceSub = "No observation data available";
+  } else if (sources.length === 1 && sources[0] === "observed") {
+    sourceLabel = "All observed";
+    sourceSub = `100% of segments use live observations`;
+  } else if (sources.length === 1 && sources[0] === "propagated") {
+    sourceLabel = "All propagated";
+    sourceSub = `${obsPct.toFixed(0)}% observed · ${dataPct.toFixed(0)}% total coverage · baseline estimates`;
+  } else {
+    sourceLabel = sources.join(" + ");
+    sourceSub = `Mixed · ${obsPct.toFixed(0)}% observed · ${dataPct.toFixed(0)}% total coverage`;
+  }
+  $("cwSources").textContent = sourceLabel;
+  $("cwSourcesSub").textContent = sourceSub;
+
+  renderRouteOnMap(selectedRoute);
+}
+
+// Render route polylines and markers on Leaflet Map
+function renderRouteOnMap(route) {
   clearMapLayers();
 
-  const recType = String(route.recommendation || "Alternative");
+  const recType = route.category;
   const color = COLORS[recType] || COLORS.Alternative;
 
-  setNotice(`Fetching road geometry for Route ${route.candidate_rank} (${recType})...`);
-
-  try {
-    const res = await fetch(`${API}/api/route/${route.test_id}/${route.candidate_rank}`);
-    if (!res.ok) throw new Error("Could not fetch route geometry.");
-
-    const data = await res.json();
-    if (!data.coordinates || data.coordinates.length < 2) {
-      throw new Error("Invalid route geometry returned.");
-    }
-
-    // Polyline
-    const line = L.polyline(data.coordinates, {
-      color: color,
-      weight: 6,
-      opacity: 0.9,
+  // Draw ALL routes faintly for context, highlight the selected one.
+  currentRoutes.forEach((r, i) => {
+    if (!r.coordinates || r.coordinates.length < 2) return;
+    const isSelected = (i === currentRoutes.indexOf(route));
+    const c = COLORS[r.category] || COLORS.Alternative;
+    const line = L.polyline(r.coordinates, {
+      color: c,
+      weight: isSelected ? 7 : 3,
+      opacity: isSelected ? 0.95 : 0.45,
       lineCap: "round",
       lineJoin: "round"
     }).addTo(map);
-
     activeLayers.push(line);
+  });
 
-    // Origin & Destination Markers
-    const startCoord = data.coordinates[0];
-    const endCoord = data.coordinates[data.coordinates.length - 1];
+  // Origin & Destination markers for the selected route.
+  if (!route.coordinates || route.coordinates.length < 2) return;
+  const startCoord = route.coordinates[0];
+  const endCoord = route.coordinates[route.coordinates.length - 1];
 
-    const originMarker = L.circleMarker(startCoord, {
-      radius: 8,
-      color: "#ffffff",
-      weight: 2,
-      fillColor: "#3b82f6",
-      fillOpacity: 1
-    }).addTo(map).bindPopup(`<b>Origin</b><br>${data.origin}`);
+  const originMarker = L.circleMarker(startCoord, {
+    radius: 8,
+    color: "#ffffff",
+    weight: 2,
+    fillColor: "#3b82f6",
+    fillOpacity: 1
+  }).addTo(map).bindPopup(`<b>Origin</b><br>${route.origin}`);
 
-    const destMarker = L.circleMarker(endCoord, {
-      radius: 8,
-      color: "#ffffff",
-      weight: 2,
-      fillColor: "#ef4444",
-      fillOpacity: 1
-    }).addTo(map).bindPopup(`<b>Destination</b><br>${data.destination}`);
+  const destMarker = L.circleMarker(endCoord, {
+    radius: 8,
+    color: "#ffffff",
+    weight: 2,
+    fillColor: "#ef4444",
+    fillOpacity: 1
+  }).addTo(map).bindPopup(`<b>Destination</b><br>${route.destination}`);
 
-    activeLayers.push(originMarker, destMarker);
+  activeLayers.push(originMarker, destMarker);
 
-    // Fit map bounds
-    map.fitBounds(line.getBounds(), { padding: [40, 40] });
-    map.invalidateSize();
+  map.fitBounds(lineBounds(route.coordinates), { padding: [40, 40] });
+  map.invalidateSize();
 
-    // Update map header & footer
-    $("mapTitle").textContent = `${data.origin} → ${data.destination} (${recType} Route)`;
+  $("mapTitle").textContent = `${route.origin} → ${route.destination} (${recType})`;
 
-    $("mapFooterDetails").innerHTML = `
-      <span class="map-footer-tag">${recType}</span>
-      <span><b>${formatNum(data.travel_time_min)} mins</b></span>
-      <span><b>${formatNum(data.distance_km)} km</b></span>
-      <span>Dynamic Risk: <b>${formatNum(data.risk_score)} / 100</b> (${getRiskCategoryLabel(data.risk_score)})</span>
-    `;
+  const timeOverhead = route.time_overhead_percent_vs_fastest != null ? `, ${route.time_overhead_percent_vs_fastest.toFixed(0)}% vs fastest` : "";
+  $("mapFooterDetails").innerHTML = `
+    <span class="map-footer-tag">${recType}</span>
+    <span><b>${formatNum(route.travel_time_min)} mins</b></span>
+    <span><b>${formatNum(route.distance_km)} km</b></span>
+    <span>Risk: <b>${formatNum(route.distance_weighted_combined_risk)} / 100</b> (${getRiskCategoryLabel(route.distance_weighted_combined_risk)})${timeOverhead}</span>
+    <span>Observed data: <b>${route.observed_coverage_percent != null ? route.observed_coverage_percent.toFixed(0) + "%" : "—"}</b></span>
+  `;
 
-    setNotice(`Displaying Route ${route.candidate_rank} (${recType}) on map.`);
-  } catch (err) {
-    setNotice("Failed to load map route geometry.", true);
-    console.error(err);
-  }
+  setNotice(`Displaying ${recType} (${route.travel_time_min.toFixed(1)} min, ${route.distance_km.toFixed(2)} km, risk ${formatNum(route.distance_weighted_combined_risk)}).`);
+}
+
+function lineBounds(coords) {
+  return new L.LatLngBounds(coords);
 }
 
 // Event Listeners
-$("btnCompare").addEventListener("click", handleJourneyChange);
-$("journeySelect").addEventListener("change", handleJourneyChange);
+$("btnCompare").addEventListener("click", () => {
+  const testId = Number($("journeySelect").value);
+  if (testId) fetchRoutes(testId);
+});
+$("journeySelect").addEventListener("change", () => {
+  const testId = Number($("journeySelect").value);
+  if (testId) fetchRoutes(testId);
+});
 
 window.addEventListener("resize", () => {
   map.invalidateSize();

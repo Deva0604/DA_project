@@ -10,10 +10,12 @@ import ast
 import contextlib
 from shapely import wkt
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+
+from backend import routing
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_FILE = BASE_DIR / "data/processed/ranked_saferoute_recommendations.csv"
@@ -500,6 +502,151 @@ def dynamic_risk_roads(
         selected = selected.where(pd.notna(selected), None)
 
         return selected.to_dict(orient="records")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ---------------------------------------------------------------------------
+# On-demand, risk-aware route computation
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# On-demand, risk-aware route computation
+# ---------------------------------------------------------------------------
+
+@app.get("/api/routes/{test_id}")
+def route_options(test_id: int):
+    """Compute traffic- and weather-aware route options for a saved journey.
+
+    Returns one summary per recommendation category (Fastest, Safest,
+    Balanced, Weather-Aware, Alternative), each with real computed metrics,
+    component risk scores, geometry, congestion/weather summaries, and data
+    freshness. Closed roads are excluded as a hard constraint.
+    """
+    try:
+        journey = routing.JOURNEYS.get(test_id)
+        if journey is None:
+            raise HTTPException(status_code=404, detail="Journey not found")
+
+        routes, diagnostics = routing.get_route_options(
+            origin_lat=journey["origin_lat"],
+            origin_lon=journey["origin_lon"],
+            destination_lat=journey["destination_lat"],
+            destination_lon=journey["destination_lon"],
+            test_id=test_id,
+            test_origin=journey["origin"],
+            test_destination=journey["destination"],
+        )
+
+        response = {
+            "test_id": test_id,
+            "origin": journey["origin"],
+            "destination": journey["destination"],
+            "routes": routes,
+            "route_count": len(routes),
+            "diagnostics": diagnostics,
+            "risk_weights": {
+                "historical": routing.HISTORICAL_WEIGHT,
+                "traffic": routing.TRAFFIC_WEIGHT,
+                "weather": routing.WEATHER_WEIGHT,
+            },
+            "note": (
+                "Risk scores are relative prototype estimates (0-100), not "
+                "calibrated accident probabilities. Missing observations are "
+                "reported explicitly and are never treated as zero risk."
+            ),
+        }
+        return response
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/api/route/compute")
+def route_compute(
+    origin_lat: float = Query(..., description="Origin latitude"),
+    origin_lon: float = Query(..., description="Origin longitude"),
+    destination_lat: float = Query(..., description="Destination latitude"),
+    destination_lon: float = Query(..., description="Destination longitude"),
+    test_id: int | None = Query(None, description="Optional journey id"),
+    origin: str = Query("Origin", description="Origin label"),
+    destination: str = Query("Destination", description="Destination label"),
+):
+    """Compute route options for arbitrary coordinates."""
+    try:
+        routes, diagnostics = routing.get_route_options(
+            origin_lat=origin_lat,
+            origin_lon=origin_lon,
+            destination_lat=destination_lat,
+            destination_lon=destination_lon,
+            test_id=test_id,
+            test_origin=origin,
+            test_destination=destination,
+        )
+
+        response = {
+            "test_id": test_id,
+            "origin": origin,
+            "destination": destination,
+            "routes": routes,
+            "route_count": len(routes),
+            "diagnostics": diagnostics,
+            "risk_weights": {
+                "historical": routing.HISTORICAL_WEIGHT,
+                "traffic": routing.TRAFFIC_WEIGHT,
+                "weather": routing.WEATHER_WEIGHT,
+            },
+            "note": (
+                "Risk scores are relative prototype estimates (0-100), not "
+                "calibrated accident probabilities. Missing observations are "
+                "reported explicitly and are never treated as zero risk."
+            ),
+        }
+        return response
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/api/route/{test_id}/geometry/{category}")
+def route_geometry_by_category(
+    test_id: int,
+    category: str,
+):
+    """Return the geometry for a specific computed route category."""
+    try:
+        journey = routing.JOURNEYS.get(test_id)
+        if journey is None:
+            raise HTTPException(status_code=404, detail="Journey not found")
+
+        routes, _diagnostics = routing.get_route_options(
+            origin_lat=journey["origin_lat"],
+            origin_lon=journey["origin_lon"],
+            destination_lat=journey["destination_lat"],
+            destination_lon=journey["destination_lon"],
+            test_id=test_id,
+            test_origin=journey["origin"],
+            test_destination=journey["destination"],
+        )
+
+        normalized = category.replace(" ", "").lower()
+        for route in routes:
+            if route["category"].replace(" ", "").lower() == normalized:
+                return {
+                    "test_id": test_id,
+                    "category": route["category"],
+                    "origin": route["origin"],
+                    "destination": route["destination"],
+                    "travel_time_min": route["travel_time_min"],
+                    "distance_km": route["distance_km"],
+                    "risk_score": route["distance_weighted_combined_risk"],
+                    "coordinates": route["coordinates"],
+                    "node_path": route["node_path"],
+                }
+
+        raise HTTPException(status_code=404, detail="Route category not found")
     except HTTPException:
         raise
     except Exception as exc:

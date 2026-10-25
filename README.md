@@ -14,7 +14,8 @@ or predictions of accidents.
 ```
 SafeRoute/
 ├── backend/
-│   └── main.py                 # FastAPI application
+│   ├── main.py                 # FastAPI application
+│   └── routing.py              # On-demand traffic- and weather-aware routing engine
 ├── data/
 │   ├── processed/              # Processed datasets (CSV, GraphML)
 │   ├── raw/                    # Raw input data
@@ -181,6 +182,46 @@ These are prototype engineering weights, not calibrated probabilities.
 - **Weather freshness threshold**: 60 minutes (configurable via `SAFEROUTE_WEATHER_FRESHNESS_MINUTES`).
 - **Traffic assignment block**: Weather-to-road assignment blocks if traffic observations are older than 180 minutes.
 
+## On-demand Routing (real edge costs)
+
+Unlike a static dashboard, SafeRoute computes routes **on demand** from the OpenStreetMap graph and the validated dynamic road-risk dataset.
+
+**Edge cost model.** Each directed road edge carries:
+- Estimated travel time (TomTom observed travel time where available, otherwise graph free-flow time).
+- Distance (OpenStreetMap edge length).
+- Historical accident risk, traffic risk, and weather risk (0–100 each).
+- Combined risk = `0.50 × historical + 0.30 × traffic + 0.20 × weather`, renormalized over the components that are actually available. Missing observations are **never** treated as zero risk; routes report the share of segments built from observed versus propagated data.
+- Closed roads (TomTom-reported or graph-flagged) are excluded as a hard routing constraint.
+
+**Route categories** are produced from distinct computed edge objectives:
+1. **Fastest Route** — minimizes estimated travel time using current traffic observations.
+2. **Safest Route** — minimizes distance-weighted combined road risk.
+3. **Balanced Route** — blends travel time and combined risk.
+4. **Weather-Aware Route** — minimizes travel time weighted by weather risk.
+5. **Alternative Route** — a feasible route that diverges from the others (edge-penalty re-routing).
+
+When the network does not provide meaningful alternatives, categories may overlap; this is reported honestly via each route's `selection_reason`. Risk scores are relative prototype estimates, not calibrated accident probabilities, and no route is guaranteed safe.
+
+For every route the engine reports: geometry, distance, travel time, per-component risk summaries (historical / traffic / weather), distance-weighted combined risk, congestion summary, weather summary, data coverage and freshness, and the number of segments excluded for closure.
+
+---
+
+## Backend API Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /` | Serve frontend index.html |
+| `GET /api/health` | Service health and dataset counts |
+| `GET /api/journeys` | List available test journeys |
+| `GET /api/recommendations/{test_id}` | Pre-ranked static recommendations (legacy) |
+| `GET /api/route/{test_id}/{candidate_rank}` | Static route geometry (legacy) |
+| `GET /api/routes/{test_id}` | **Computed route options** (all 5 categories, metrics + geometry) |
+| `GET /api/route/compute` | **Computed route options** for arbitrary lat/lon coordinates |
+| `GET /api/route/{test_id}/geometry/{category}` | Geometry for one computed route category |
+| `GET /api/data-status` | Traffic and weather freshness status |
+| `GET /api/dynamic-risk/summary` | Dynamic risk summary statistics |
+| `GET /api/dynamic-risk/roads` | Road-level risk data (paginated) |
+
 ---
 
 ## Running Tests
@@ -203,6 +244,31 @@ TOMTOM_API_KEY=your_key_here
 ```
 
 The API key is never logged or displayed by any script.
+
+---
+
+## Startup & Demonstration
+
+1. **(Optional) Refresh live data** — Re-run the pipeline to update traffic/weather observations, then regenerate `dynamic_road_risk.csv`. The routing engine picks up the latest file on every request.
+2. **Start the backend**
+   ```bash
+   uvicorn backend.main:app --reload
+   ```
+3. **Verify the API**
+   ```bash
+   curl http://localhost:8000/api/health
+   curl http://localhost:8000/api/routes/1
+   ```
+4. **Open the frontend**
+   Open `http://localhost:8000/` in a browser. Select a journey, click "Compare Routes," then click individual route options to highlight them on the map and inspect the risk analysis and traffic/weather panels.
+
+**Demonstration checklist**
+- Five route categories are returned for each journey (Fastest, Safest, Balanced, Weather-Aware, Alternative).
+- Each route shows real computed travel time, distance, and component risk scores (historical / traffic / weather).
+- The selected route is highlighted on the map; all routes are drawn with consistent colors.
+- The risk analysis panel explains the main contributors to the selected route's risk.
+- Data freshness badges show whether traffic/weather observations are FRESH, STALE, or UNAVAILABLE.
+- Closed roads are excluded from routing.
 
 ---
 
