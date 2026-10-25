@@ -34,23 +34,107 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 print(f"Loading graph: {GRAPH_FILE}")
 graph = load_graph_fast(GRAPH_FILE)
 
+# Load the latest collected road-level risk snapshot.
+DYNAMIC_RISK_FILE = ROOT / "data" / "processed" / "dynamic_road_risk.csv"
+if not DYNAMIC_RISK_FILE.is_file():
+    raise FileNotFoundError(
+        f"Dynamic-risk file not found: {DYNAMIC_RISK_FILE}"
+    )
+
+risk_df = pd.read_csv(DYNAMIC_RISK_FILE)
+required_columns = {
+    "osm_u", "osm_v", "osm_key",
+    "historical_risk", "traffic_risk", "weather_risk",
+    "dynamic_risk", "road_closure", "risk_data_status",
+}
+missing_columns = required_columns - set(risk_df.columns)
+if missing_columns:
+    raise ValueError(
+        f"Dynamic-risk file is missing columns: {sorted(missing_columns)}"
+    )
+
+edge_key_columns = ["osm_u", "osm_v", "osm_key"]
+if risk_df[edge_key_columns].isna().any().any():
+    raise ValueError("Dynamic-risk file contains missing edge identifiers.")
+
+if risk_df.duplicated(edge_key_columns).any():
+    raise ValueError("Dynamic-risk file contains duplicate edge identifiers.")
+
+risk_columns = [
+    "historical_risk", "traffic_risk", "weather_risk", "dynamic_risk"
+]
+for column in risk_columns:
+    risk_df[column] = pd.to_numeric(risk_df[column], errors="coerce")
+
+if not risk_df[risk_columns].apply(
+    lambda column: column.map(math.isfinite)
+).all().all():
+    raise ValueError("Dynamic-risk file contains invalid or non-finite risk values.")
+
+def normalized_bool(value):
+    if isinstance(value, bool):
+        return value
+    if pd.isna(value):
+        return False
+    return str(value).strip().lower() in {"true", "1", "yes", "y"}
+
+risk_lookup = {}
+for row in risk_df.to_dict(orient="records"):
+    key = (int(row["osm_u"]), int(row["osm_v"]), int(row["osm_key"]))
+    row["road_closure"] = normalized_bool(row["road_closure"])
+    risk_lookup[key] = row
+
+tomtom_closed_keys = {
+    key for key, row in risk_lookup.items() if row["road_closure"]
+}
+
+print(f"Dynamic-risk records loaded: {len(risk_lookup):,}")
+print(f"TomTom-reported closed segments: {len(tomtom_closed_keys):,}")
+
 routing = nx.DiGraph()
 routing.add_nodes_from(graph.nodes(data=True))
 
+updated_risk_edges = 0
+tomtom_closed_excluded = 0
+graph_closed_excluded = 0
+unmatched_graph_edges = 0
+invalid_edges_skipped = 0
+
 for u, v, key, data in graph.edges(keys=True, data=True):
-    if parse_bool(data.get("road_closure", False)):
+    edge_data = dict(data)
+    identifier = (int(u), int(v), int(key))
+    current_risk = risk_lookup.get(identifier)
+
+    if current_risk is not None:
+        for column in risk_columns:
+            edge_data[column] = float(current_risk[column])
+        updated_risk_edges += 1
+    else:
+        unmatched_graph_edges += 1
+
+    # Preserve existing graph restrictions and also apply current
+    # TomTom-reported closures for matched road segments.
+    if parse_bool(edge_data.get("road_closure", False)):
+        graph_closed_excluded += 1
         continue
 
-    if normalize_source(data.get("risk_source", "")) == "closed":
+    if normalize_source(edge_data.get("risk_source", "")) == "closed":
+        graph_closed_excluded += 1
         continue
 
-    travel_time = get_attr(data, "routing_travel_time", 0.0)
-    distance = get_attr(data, "length", 0.0)
-    risk = get_attr(data, "dynamic_risk", 5.0)
+    if current_risk is not None and current_risk["road_closure"]:
+        tomtom_closed_excluded += 1
+        continue
+
+    travel_time = get_attr(edge_data, "routing_travel_time", 0.0)
+    distance = get_attr(edge_data, "length", 0.0)
+    risk = get_attr(edge_data, "dynamic_risk", 5.0)
 
     if not all(math.isfinite(x) for x in (travel_time, distance, risk)):
+        invalid_edges_skipped += 1
         continue
     if travel_time <= 0 or distance < 0:
+        invalid_edges_skipped += 1
         continue
 
     base_weight = travel_time * (
@@ -58,9 +142,9 @@ for u, v, key, data in graph.edges(keys=True, data=True):
     )
 
     if not math.isfinite(base_weight) or base_weight <= 0:
+        invalid_edges_skipped += 1
         continue
 
-    edge_data = dict(data)
     edge_data["original_key"] = key
     edge_data["travel_time"] = travel_time
     edge_data["length"] = distance
@@ -72,6 +156,27 @@ for u, v, key, data in graph.edges(keys=True, data=True):
         "base_weight", float("inf")
     ):
         routing.add_edge(u, v, **edge_data)
+
+print("\n=== DYNAMIC-RISK ROUTING VALIDATION ===")
+print(f"Graph edges examined: {graph.number_of_edges():,}")
+print(f"Edges with latest risk values applied: {updated_risk_edges:,}")
+print(f"TomTom closures excluded by current closure flag: {tomtom_closed_excluded:,}")
+print(f"Edges excluded by existing graph closure restrictions: {graph_closed_excluded:,}")
+print(f"Graph edges without a dynamic-risk record: {unmatched_graph_edges:,}")
+print(f"Invalid or unusable edges skipped: {invalid_edges_skipped:,}")
+print(f"Usable directed routing edges: {routing.number_of_edges():,}")
+
+if updated_risk_edges != len(risk_lookup):
+    print(
+        "WARNING: Not every dynamic-risk record matched a graph edge. "
+        "Inspect identifier direction/key matching before trusting results."
+    )
+if tomtom_closed_excluded != len(tomtom_closed_keys):
+    print(
+        "WARNING: Not all TomTom-reported closures were excluded in this "
+        "routing graph. Some may already have been excluded by graph flags "
+        "or may not match the graph's directed edge identifiers."
+    )
 
 coordinates = {}
 for node, data in graph.nodes(data=True):

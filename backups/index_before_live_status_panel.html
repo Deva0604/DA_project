@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SafeRoute | Intelligent Road Safety</title>
+
+<link rel="stylesheet"
+ href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
+<style>
+:root {
+  --bg: #0b1220;
+  --panel: #121d2e;
+  --panel2: #18263a;
+  --text: #edf4ff;
+  --muted: #9aabc1;
+  --green: #42e6a4;
+  --blue: #58a6ff;
+  --orange: #ffb454;
+  --red: #ff7373;
+  --border: #293950;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Inter, system-ui, Arial, sans-serif;
+}
+
+header {
+  min-height: 72px;
+  padding: 16px 26px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--border);
+  background: #0e1828;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.logo {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  background: var(--green);
+  color: #071a17;
+  font-size: 23px;
+  font-weight: 900;
+}
+
+.brand h1 { margin: 0; font-size: 21px; }
+.brand p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.dot {
+  width: 9px;
+  height: 9px;
+  background: var(--orange);
+  border-radius: 50%;
+}
+
+main {
+  padding: 22px;
+  max-width: 1600px;
+  margin: auto;
+}
+
+.hero {
+  margin-bottom: 20px;
+}
+
+.hero h2 {
+  margin: 0 0 8px;
+  font-size: clamp(23px, 3vw, 34px);
+}
+
+.hero p { margin: 0; color: var(--muted); line-height: 1.6; }
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 13px;
+  margin: 20px 0;
+}
+
+.stat, .panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 15px;
+}
+
+.stat { padding: 17px; }
+.stat .label { color: var(--muted); font-size: 12px; }
+.stat .value { font-size: 25px; font-weight: 750; margin-top: 7px; }
+
+.workspace {
+  display: grid;
+  grid-template-columns: 360px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.panel { overflow: hidden; }
+.panel-heading { padding: 18px 18px 12px; }
+.panel-heading h3 { margin: 0 0 6px; font-size: 16px; }
+.panel-heading p { margin: 0; font-size: 12px; color: var(--muted); }
+
+.controls { padding: 0 18px 18px; }
+
+label {
+  display: block;
+  margin: 15px 0 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+select, button {
+  width: 100%;
+  border-radius: 9px;
+  padding: 12px;
+  font: inherit;
+}
+
+select {
+  color: var(--text);
+  background: var(--panel2);
+  border: 1px solid var(--border);
+}
+
+button {
+  margin-top: 14px;
+  border: 0;
+  color: #061b16;
+  background: var(--green);
+  font-weight: 750;
+  cursor: pointer;
+}
+
+button:disabled { opacity: 0.5; cursor: wait; }
+
+.notice {
+  margin-top: 14px;
+  padding: 11px;
+  border-radius: 9px;
+  color: var(--muted);
+  background: var(--panel2);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.route-list { padding: 0 12px 12px; }
+
+.route-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 13px;
+  margin-top: 10px;
+  cursor: pointer;
+  background: #101a2a;
+  transition: border-color 0.15s;
+}
+
+.route-card:hover, .route-card.active {
+  border-color: var(--green);
+}
+
+.route-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+}
+
+.badge {
+  display: inline-block;
+  border-radius: 6px;
+  padding: 5px 7px;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  background: #203b34;
+  color: var(--green);
+}
+
+.route-card h4 { margin: 10px 0; font-size: 14px; }
+
+.route-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.metric-label { color: var(--muted); font-size: 10px; }
+.metric-value { margin-top: 4px; font-weight: 700; font-size: 13px; }
+
+.map-panel { min-width: 0; }
+
+.map-toolbar {
+  padding: 15px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.map-toolbar h3 { margin: 0; font-size: 15px; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 12px; color: var(--muted); font-size: 11px; }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.swatch { width: 17px; height: 4px; border-radius: 5px; }
+
+#map { height: 610px; width: 100%; background: #dbe6e8; }
+
+.map-caption {
+  padding: 12px 16px;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+footer {
+  padding: 22px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.error { color: var(--red); }
+
+.leaflet-popup-content-wrapper, .leaflet-popup-tip {
+  background: #122035;
+  color: #edf4ff;
+}
+
+@media (max-width: 950px) {
+  .workspace { grid-template-columns: 1fr; }
+  #map { height: 460px; }
+}
+
+@media (max-width: 520px) {
+  main { padding: 13px; }
+  header { padding: 14px; }
+  .stats { gap: 7px; }
+  .stat { padding: 11px; }
+  .stat .value { font-size: 20px; }
+  #map { height: 380px; }
+}
+</style>
+</head>
+
+<body>
+<header>
+  <div class="brand">
+    <div class="logo">S</div>
+    <div>
+      <h1>SafeRoute</h1>
+      <p>Spatio-Temporal Road Risk Intelligence</p>
+    </div>
+  </div>
+  <div class="status">
+    <span class="dot" id="statusDot"></span>
+    <span id="connectionStatus">Connecting to backend...</span>
+  </div>
+</header>
+
+<main>
+  <section class="hero">
+    <h2>Choose a safer way through Chennai.</h2>
+    <p>Compare available routes using estimated travel time, distance and road-risk scores.</p>
+  </section>
+
+  <section class="stats">
+    <div class="stat">
+      <div class="label">TEST JOURNEYS</div>
+      <div class="value" id="journeyCount">—</div>
+    </div>
+    <div class="stat">
+      <div class="label">AVAILABLE RECOMMENDATIONS</div>
+      <div class="value" id="routeCount">—</div>
+    </div>
+    <div class="stat">
+      <div class="label">DATA SOURCE</div>
+      <div class="value" style="font-size:17px">Road-risk engine</div>
+    </div>
+  </section>
+
+  <section class="workspace">
+    <div class="panel">
+      <div class="panel-heading">
+        <h3>Plan your journey</h3>
+        <p>Select one of the prepared Chennai test journeys.</p>
+      </div>
+
+      <div class="controls">
+        <label for="journeySelect">ORIGIN → DESTINATION</label>
+        <select id="journeySelect">
+          <option value="">Loading journeys...</option>
+        </select>
+
+        <button id="showRoutes" disabled>Compare Routes</button>
+
+        <div class="notice" id="message">
+          Connecting to the SafeRoute API.
+        </div>
+      </div>
+
+      <div class="panel-heading">
+        <h3>Route recommendations</h3>
+        <p>Select a route card to display its road path.</p>
+      </div>
+      <div class="route-list" id="routeList">
+        <div class="notice">Routes will appear here.</div>
+      </div>
+    </div>
+
+    <div class="panel map-panel">
+      <div class="map-toolbar">
+        <h3>Chennai road map</h3>
+        <div class="legend">
+          <span><i class="swatch" style="background:#2588ff"></i>Fastest</span>
+          <span><i class="swatch" style="background:#20b981"></i>Safest</span>
+          <span><i class="swatch" style="background:#f5a623"></i>Alternative</span>
+        </div>
+      </div>
+      <div id="map"></div>
+      <div class="map-caption" id="mapCaption">
+        Select a journey and compare available routes.
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  SafeRoute · Academic prototype · Historical risk recommendations are estimates,
+  not a guarantee of road safety.
+</footer>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+const API = window.location.origin;
+const COLORS = {
+  Fastest: "#2588ff",
+  Safest: "#20b981",
+  Balanced: "#a78bfa",
+  Alternative: "#f5a623"
+};
+
+const map = L.map("map").setView([13.055, 80.22], 11);
+
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 19,
+  attribution: "&copy; OpenStreetMap contributors"
+}).addTo(map);
+
+let journeys = [];
+let routeLayers = [];
+let selectedJourney = null;
+
+const $ = id => document.getElementById(id);
+
+function setMessage(message, error = false) {
+  $("message").textContent = message;
+  $("message").classList.toggle("error", error);
+}
+
+function setStatus(message, good) {
+  $("connectionStatus").textContent = message;
+  $("statusDot").style.background = good ? "#42e6a4" : "#ff7373";
+}
+
+function clearRouteLayers() {
+  routeLayers.forEach(layer => map.removeLayer(layer));
+  routeLayers = [];
+}
+
+function formatNumber(value, digits = 1) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n.toFixed(digits) : "—";
+}
+
+function riskDescription(value) {
+  const n = Number(value);
+  if (n < 20) return "Lower relative risk";
+  if (n < 40) return "Moderate relative risk";
+  return "Higher relative risk";
+}
+
+async function loadJourneys() {
+  try {
+    const [healthResponse, journeyResponse] = await Promise.all([
+      fetch(`${API}/api/health`),
+      fetch(`${API}/api/journeys`)
+    ]);
+
+    if (!healthResponse.ok || !journeyResponse.ok) {
+      throw new Error("Backend returned an error. Check the terminal.");
+    }
+
+    const health = await healthResponse.json();
+    journeys = await journeyResponse.json();
+
+    $("journeyCount").textContent = health.journey_count;
+    $("routeCount").textContent = health.recommendation_count;
+
+    $("journeySelect").innerHTML = "";
+
+    journeys.forEach(journey => {
+      const option = document.createElement("option");
+      option.value = journey.test_id;
+      option.textContent =
+        `${journey.origin} → ${journey.destination}`;
+      $("journeySelect").appendChild(option);
+    });
+
+    $("showRoutes").disabled = journeys.length === 0;
+    setStatus("Backend connected", true);
+
+    if (journeys.length) {
+      await showRoutes();
+    } else {
+      setMessage("No journeys are available.", true);
+    }
+  } catch (error) {
+    setStatus("Backend disconnected", false);
+    setMessage(
+      "Could not load routes. Start the FastAPI server and refresh this page.",
+      true
+    );
+    console.error(error);
+  }
+}
+
+async function showRoutes() {
+  const testId = Number($("journeySelect").value);
+  if (!testId) return;
+
+  selectedJourney = journeys.find(j => j.test_id === testId);
+  $("showRoutes").disabled = true;
+  $("showRoutes").textContent = "Loading routes...";
+  $("routeList").innerHTML = "";
+  clearRouteLayers();
+
+  try {
+    const response = await fetch(`${API}/api/recommendations/${testId}`);
+    if (!response.ok) throw new Error(await response.text());
+
+    const routes = await response.json();
+
+    if (!routes.length) {
+      setMessage("No recommendations are available for this journey.", true);
+      return;
+    }
+
+    routes.sort((a, b) =>
+      Number(a.candidate_rank) - Number(b.candidate_rank)
+    );
+
+    routes.forEach(route => {
+      const risk = Number(route.distance_weighted_dynamic_risk);
+      const label = String(route.recommendation || "Alternative");
+      const card = document.createElement("div");
+
+      card.className = "route-card";
+      card.innerHTML = `
+        <div class="route-top">
+          <span class="badge">${label}</span>
+          <span style="color:var(--muted);font-size:11px">
+            Route ${route.candidate_rank}
+          </span>
+        </div>
+        <h4>${selectedJourney.origin} → ${selectedJourney.destination}</h4>
+        <div class="route-metrics">
+          <div>
+            <div class="metric-label">TIME</div>
+            <div class="metric-value">${formatNumber(route.travel_time_min)} min</div>
+          </div>
+          <div>
+            <div class="metric-label">DISTANCE</div>
+            <div class="metric-value">${formatNumber(route.distance_km)} km</div>
+          </div>
+          <div>
+            <div class="metric-label">RISK SCORE</div>
+            <div class="metric-value">${formatNumber(risk)}</div>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:9px">
+          ${riskDescription(risk)}
+        </div>
+      `;
+
+      card.addEventListener("click", () => drawRoute(route, card));
+      $("routeList").appendChild(card);
+    });
+
+    setMessage(
+      `${routes.length} recommendations loaded. Select a card to display its road path.`
+    );
+
+    await drawRoute(routes[0], $("routeList").firstElementChild);
+  } catch (error) {
+    setMessage("Could not load recommendations. Check the backend logs.", true);
+    console.error(error);
+  } finally {
+    $("showRoutes").disabled = false;
+    $("showRoutes").textContent = "Compare Routes";
+  }
+}
+
+async function drawRoute(route, card) {
+  document.querySelectorAll(".route-card").forEach(el =>
+    el.classList.remove("active")
+  );
+  if (card) card.classList.add("active");
+
+  clearRouteLayers();
+
+  const color = COLORS[String(route.recommendation)] || COLORS.Alternative;
+
+  setMessage(`Loading road geometry for Route ${route.candidate_rank}...`);
+
+  try {
+    const response = await fetch(
+      `${API}/api/route/${route.test_id}/${route.candidate_rank}`
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(errorText);
+    }
+
+    const data = await response.json();
+
+    if (!data.coordinates || data.coordinates.length < 2) {
+      throw new Error("The route has insufficient geometry.");
+    }
+
+    const line = L.polyline(data.coordinates, {
+      color,
+      weight: 6,
+      opacity: 0.9,
+      lineCap: "round",
+      lineJoin: "round"
+    }).addTo(map);
+
+    routeLayers.push(line);
+
+    const start = data.coordinates[0];
+    const end = data.coordinates[data.coordinates.length - 1];
+
+    const startMarker = L.circleMarker(start, {
+      radius: 7,
+      color: "#ffffff",
+      weight: 2,
+      fillColor: "#2588ff",
+      fillOpacity: 1
+    }).addTo(map).bindPopup(`<b>Origin</b><br>${data.origin}`);
+
+    const endMarker = L.circleMarker(end, {
+      radius: 7,
+      color: "#ffffff",
+      weight: 2,
+      fillColor: "#ff7373",
+      fillOpacity: 1
+    }).addTo(map).bindPopup(`<b>Destination</b><br>${data.destination}`);
+
+    routeLayers.push(startMarker, endMarker);
+
+    map.fitBounds(line.getBounds(), {padding: [30, 30]});
+
+    $("mapCaption").textContent =
+      `${data.recommendation} route · ${formatNumber(data.distance_km)} km · ` +
+      `${formatNumber(data.travel_time_min)} minutes · ` +
+      `Risk score: ${formatNumber(data.risk_score)}. ` +
+      `Travel times are estimates; live traffic integration has not yet been verified.`;
+
+    setMessage(`Displaying Route ${route.candidate_rank} on the map.`);
+  } catch (error) {
+    setMessage(
+      "Could not display road geometry. The backend may still be loading the road graph.",
+      true
+    );
+    console.error(error);
+  }
+}
+
+$("showRoutes").addEventListener("click", showRoutes);
+$("journeySelect").addEventListener("change", showRoutes);
+
+loadJourneys();
+</script>
+</body>
+</html>

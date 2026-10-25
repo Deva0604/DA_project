@@ -1,297 +1,54 @@
+import os
 import pandas as pd
 import numpy as np
 
-
-INPUT_FILE = "data/processed/road_weather_risk.csv"
+WEATHER_FILE = "data/processed/road_weather_risk.csv"
+TRAFFIC_FILE = "data/processed/road_live_traffic_full.csv"
 OUTPUT_FILE = "data/processed/dynamic_road_risk.csv"
 
-
-print("=" * 70)
-print("SAFEROUTE - DYNAMIC ROAD RISK ENGINE")
-print("=" * 70)
-
-
-# ============================================================
-# 1. LOAD DATA
-# ============================================================
-
-print("\n[1/6] Loading road-weather dataset...")
-
-df = pd.read_csv(INPUT_FILE)
-
-print(f"Road segments: {len(df):,}")
-
-
-# ============================================================
-# 2. CHECK REQUIRED COLUMNS
-# ============================================================
-
-print("\n[2/6] Checking required columns...")
-
-required_columns = [
-    "osm_u",
-    "osm_v",
-    "osm_key",
-    "historical_risk",
-    "traffic_risk",
-    "weather_risk",
-    "road_closure",
-    "current_speed_kmh",
-    "free_flow_speed_kmh",
-    "congestion_ratio",
-    "traffic_confidence",
-    "temperature_c",
-    "humidity_percent",
-    "rain_mm",
-    "weather_code",
-    "wind_speed_kmh",
-]
-
-missing_columns = [
-    column
-    for column in required_columns
-    if column not in df.columns
-]
-
-if missing_columns:
-    raise ValueError(
-        f"Missing required columns: {missing_columns}"
-    )
-
-print("All required columns present.")
-
-
-# ============================================================
-# 3. CLEAN NUMERIC VALUES
-# ============================================================
-
-print("\n[3/6] Preparing risk components...")
-
-numeric_columns = [
-    "historical_risk",
-    "traffic_risk",
-    "weather_risk",
-    "current_speed_kmh",
-    "free_flow_speed_kmh",
-    "congestion_ratio",
-    "traffic_confidence",
-    "temperature_c",
-    "humidity_percent",
-    "rain_mm",
-    "weather_code",
-    "wind_speed_kmh",
-]
-
-for column in numeric_columns:
-    df[column] = pd.to_numeric(
-        df[column],
-        errors="coerce"
-    )
-
-
-# Fill missing risk components safely
-df["historical_risk"] = (
-    df["historical_risk"]
-    .fillna(0)
-    .clip(0, 100)
-)
-
-df["traffic_risk"] = (
-    df["traffic_risk"]
-    .fillna(0)
-    .clip(0, 100)
-)
-
-df["weather_risk"] = (
-    df["weather_risk"]
-    .fillna(0)
-    .clip(0, 100)
-)
-
-
-# Convert road closure to boolean
-df["road_closure"] = (
-    df["road_closure"]
-    .astype(str)
-    .str.lower()
-    .isin(["true", "1", "yes"])
-)
-
-
-# ============================================================
-# 4. CALCULATE COMPONENT CONTRIBUTIONS
-# ============================================================
-
-print("\n[4/6] Calculating dynamic risk...")
-
-
-# ------------------------------------------------------------
-# WEIGHTS
-# ------------------------------------------------------------
-#
-# Historical road risk = 50%
-# Traffic risk         = 30%
-# Weather risk         = 20%
-#
-# These are prototype engineering weights.
-# They are NOT statistically calibrated probabilities.
-# ------------------------------------------------------------
+KEYS = ["osm_u", "osm_v", "osm_key"]
 
 HISTORICAL_WEIGHT = 0.50
 TRAFFIC_WEIGHT = 0.30
 WEATHER_WEIGHT = 0.20
 
+# Refresh validation safeguards
+MIN_COMPLETE_COVERAGE = 0.90
+MIN_RISK_SCORE = 0.0
+MAX_RISK_SCORE = 100.0
 
-df["historical_contribution"] = (
-    df["historical_risk"]
-    * HISTORICAL_WEIGHT
-)
+print("=" * 70)
+print("SAFEROUTE - DYNAMIC ROAD RISK ENGINE")
+print("=" * 70)
 
-df["traffic_contribution"] = (
-    df["traffic_risk"]
-    * TRAFFIC_WEIGHT
-)
+# ------------------------------------------------------------
+# 1. LOAD INPUTS
+# ------------------------------------------------------------
+print("\n[1/7] Loading weather-risk and refreshed traffic datasets...")
 
-df["weather_contribution"] = (
-    df["weather_risk"]
-    * WEATHER_WEIGHT
-)
+weather = pd.read_csv(WEATHER_FILE)
+traffic = pd.read_csv(TRAFFIC_FILE)
 
+for name, df in [("weather", weather), ("traffic", traffic)]:
+    missing = [c for c in KEYS if c not in df.columns]
+    if missing:
+        raise ValueError(f"{name} dataset missing road keys: {missing}")
 
-# Base dynamic risk
-df["dynamic_risk"] = (
-    df["historical_contribution"]
-    + df["traffic_contribution"]
-    + df["weather_contribution"]
-)
+    if df[KEYS].isna().any().any():
+        raise ValueError(f"{name} dataset contains missing road identifiers.")
 
+    if df.duplicated(KEYS).any():
+        raise ValueError(f"{name} dataset contains duplicate road identifiers.")
 
-# ============================================================
-# 5. HANDLE ROAD CLOSURES
-# ============================================================
+print("Weather-risk roads:", len(weather))
+print("Traffic roads:", len(traffic))
 
-# A road closure is a hard constraint rather than simply
-# another risk factor.
+# ------------------------------------------------------------
+# 2. REPLACE STALE TRAFFIC DATA
+# ------------------------------------------------------------
+print("\n[2/7] Merging refreshed traffic readings by road identifiers...")
 
-df.loc[
-    df["road_closure"],
-    "dynamic_risk"
-] = 100.0
-
-
-# Keep risk in 0-100 range
-df["dynamic_risk"] = (
-    df["dynamic_risk"]
-    .clip(0, 100)
-    .round(2)
-)
-
-
-# ============================================================
-# 6. RISK CLASSIFICATION
-# ============================================================
-
-def classify_dynamic_risk(row):
-
-    if row["road_closure"]:
-        return "CLOSED"
-
-    risk = row["dynamic_risk"]
-
-    if risk < 20:
-        return "LOW"
-
-    elif risk < 40:
-        return "MEDIUM"
-
-    elif risk < 70:
-        return "HIGH"
-
-    else:
-        return "SEVERE"
-
-
-df["dynamic_risk_category"] = (
-    df.apply(
-        classify_dynamic_risk,
-        axis=1
-    )
-)
-
-
-# ============================================================
-# 7. TRAFFIC STATUS
-# ============================================================
-
-def classify_traffic_status(risk):
-
-    if risk < 15:
-        return "LOW"
-
-    elif risk < 35:
-        return "MEDIUM"
-
-    elif risk < 60:
-        return "HIGH"
-
-    else:
-        return "SEVERE"
-
-
-df["traffic_status_calculated"] = (
-    df["traffic_risk"]
-    .apply(classify_traffic_status)
-)
-
-
-# ============================================================
-# 8. WEATHER STATUS
-# ============================================================
-
-def classify_weather_status(risk):
-
-    if risk < 15:
-        return "LOW"
-
-    elif risk < 35:
-        return "MEDIUM"
-
-    elif risk < 60:
-        return "HIGH"
-
-    else:
-        return "SEVERE"
-
-
-df["weather_status_calculated"] = (
-    df["weather_risk"]
-    .apply(classify_weather_status)
-)
-
-
-# ============================================================
-# 9. SELECT FINAL COLUMNS
-# ============================================================
-
-final_columns = [
-    "osm_u",
-    "osm_v",
-    "osm_key",
-
-    # Road information
-    "road_name",
-    "highway",
-    "road_length_m",
-
-    # Historical risk
-    "accident_count",
-    "fatal_count",
-    "major_count",
-    "minor_count",
-    "historical_risk",
-    "risk_category",
-
-    # Traffic
+traffic_columns = [
     "current_speed_kmh",
     "free_flow_speed_kmh",
     "current_travel_time_sec",
@@ -300,166 +57,335 @@ final_columns = [
     "road_closure",
     "congestion_ratio",
     "traffic_risk",
-    "traffic_status_calculated",
+    "traffic_status",
+    "traffic_observation_time",
+    "traffic_http_status",
+    "traffic_error",
+]
 
-    # Weather
-    "weather_grid_id",
-    "weather_distance_km",
-    "observation_time",
+missing_traffic_columns = [
+    c for c in traffic_columns if c not in traffic.columns
+]
+if missing_traffic_columns:
+    raise ValueError(
+        f"Traffic dataset missing columns: {missing_traffic_columns}"
+    )
+
+# Remove older traffic fields from the weather dataset.
+# Historical risk and weather measurements remain untouched.
+stale_traffic_columns = [
+    c for c in traffic_columns if c in weather.columns
+]
+base = weather.drop(columns=stale_traffic_columns)
+
+fresh_traffic = traffic[KEYS + traffic_columns].copy()
+
+df = base.merge(
+    fresh_traffic,
+    on=KEYS,
+    how="left",
+    validate="one_to_one",
+    indicator=True,
+)
+
+unmatched = int((df["_merge"] != "both").sum())
+df.drop(columns=["_merge"], inplace=True)
+
+if unmatched:
+    raise ValueError(
+        f"{unmatched} weather roads have no matching traffic record. "
+        "Output was not written."
+    )
+
+if len(df) != len(weather):
+    raise ValueError("Unexpected row-count change after traffic merge.")
+
+print("Matched roads:", len(df))
+print("Unmatched roads: 0")
+
+# ------------------------------------------------------------
+# 3. VALIDATE COMPONENTS
+# ------------------------------------------------------------
+print("\n[3/7] Validating risk components...")
+
+required_components = [
+    "historical_risk",
+    "traffic_risk",
+    "weather_risk",
+]
+
+for column in required_components:
+    df[column] = pd.to_numeric(df[column], errors="coerce")
+    df.loc[~np.isfinite(df[column]), column] = np.nan
+    df[column] = df[column].clip(0, 100)
+
+for column in [
+    "current_speed_kmh",
+    "free_flow_speed_kmh",
+    "current_travel_time_sec",
+    "free_flow_travel_time_sec",
+    "traffic_confidence",
+    "congestion_ratio",
     "temperature_c",
     "humidity_percent",
     "rain_mm",
     "weather_code",
     "wind_speed_kmh",
     "wind_direction_deg",
-    "weather_risk",
-    "weather_status_calculated",
+    "weather_distance_km",
+]:
+    if column in df.columns:
+        df[column] = pd.to_numeric(df[column], errors="coerce")
 
-    # Dynamic risk
-    "historical_contribution",
-    "traffic_contribution",
-    "weather_contribution",
-    "dynamic_risk",
-    "dynamic_risk_category",
+traffic_ok = (
+    df["traffic_status"].eq("SUCCESS")
+    & df["current_speed_kmh"].notna()
+    & df["free_flow_speed_kmh"].notna()
+    & df["free_flow_speed_kmh"].gt(0)
+    & df["traffic_risk"].notna()
+)
+
+weather_ok = (
+    df["weather_status"].eq("SUCCESS")
+    & df["weather_risk"].notna()
+)
+
+historical_ok = df["historical_risk"].notna()
+
+# Risk components cannot be trusted if the corresponding source failed.
+df.loc[~traffic_ok, "traffic_risk"] = np.nan
+df.loc[~weather_ok, "weather_risk"] = np.nan
+
+# ------------------------------------------------------------
+# 4. CALCULATE COMPONENT CONTRIBUTIONS
+# ------------------------------------------------------------
+print("\n[4/7] Calculating weighted dynamic risk...")
+
+df["historical_contribution"] = (
+    df["historical_risk"] * HISTORICAL_WEIGHT
+)
+df["traffic_contribution"] = (
+    df["traffic_risk"] * TRAFFIC_WEIGHT
+)
+df["weather_contribution"] = (
+    df["weather_risk"] * WEATHER_WEIGHT
+)
+
+all_components_available = (
+    historical_ok & traffic_ok & weather_ok
+)
+
+df["dynamic_risk"] = np.nan
+
+df.loc[all_components_available, "dynamic_risk"] = (
+    df.loc[all_components_available, "historical_contribution"]
+    + df.loc[all_components_available, "traffic_contribution"]
+    + df.loc[all_components_available, "weather_contribution"]
+)
+
+# Parse boolean values robustly, including CSV strings.
+closure_text = df["road_closure"].astype(str).str.strip().str.lower()
+closed = closure_text.isin(["true", "1", "yes"])
+
+df["road_closure"] = closed
+
+# A confirmed closure is a routing constraint, not a normal risk score.
+df.loc[closed, "dynamic_risk"] = 100.0
+
+df["dynamic_risk"] = df["dynamic_risk"].clip(0, 100).round(2)
+
+# ------------------------------------------------------------
+# 5. CLASSIFY RISK AND DATA AVAILABILITY
+# ------------------------------------------------------------
+print("\n[5/7] Classifying risk and data availability...")
+
+def classify_dynamic(row):
+    if row["road_closure"]:
+        return "CLOSED"
+    if pd.isna(row["dynamic_risk"]):
+        return "UNAVAILABLE"
+
+    risk = row["dynamic_risk"]
+    if risk < 20:
+        return "LOW"
+    if risk < 40:
+        return "MEDIUM"
+    if risk < 70:
+        return "HIGH"
+    return "SEVERE"
+
+def classify_component(value):
+    if pd.isna(value):
+        return "UNAVAILABLE"
+    if value < 15:
+        return "LOW"
+    if value < 35:
+        return "MEDIUM"
+    if value < 60:
+        return "HIGH"
+    return "SEVERE"
+
+df["dynamic_risk_category"] = df.apply(classify_dynamic, axis=1)
+df["traffic_status_calculated"] = df["traffic_risk"].apply(classify_component)
+df["weather_status_calculated"] = df["weather_risk"].apply(classify_component)
+
+df["risk_data_status"] = np.select(
+    [
+        closed,
+        all_components_available,
+    ],
+    [
+        "CLOSED",
+        "COMPLETE",
+    ],
+    default="INCOMPLETE",
+)
+
+# ------------------------------------------------------------
+# 6. BUILD FINAL OUTPUT
+# ------------------------------------------------------------
+print("\n[6/7] Preparing output dataset...")
+
+final_columns = [
+    "osm_u", "osm_v", "osm_key",
+    "road_name", "highway", "road_length_m",
+    "accident_count", "fatal_count", "major_count", "minor_count",
+    "historical_risk", "risk_category",
+    "current_speed_kmh", "free_flow_speed_kmh",
+    "current_travel_time_sec", "free_flow_travel_time_sec",
+    "traffic_confidence", "road_closure", "congestion_ratio",
+    "traffic_risk", "traffic_status", "traffic_observation_time",
+    "traffic_http_status", "traffic_error",
+    "traffic_status_calculated",
+    "weather_grid_id", "weather_distance_km", "observation_time",
+    "temperature_c", "humidity_percent", "precipitation_mm",
+    "rain_mm", "weather_code", "wind_speed_kmh", "wind_direction_deg",
+    "weather_status", "rain_risk", "weather_code_risk",
+    "wind_risk", "humidity_risk", "weather_risk",
+    "weather_risk_category", "weather_status_calculated",
+    "historical_contribution", "traffic_contribution",
+    "weather_contribution", "dynamic_risk",
+    "dynamic_risk_category", "risk_data_status",
 ]
 
-
-# Make sure every final column exists
-missing_final = [
-    column
-    for column in final_columns
-    if column not in df.columns
-]
-
+missing_final = [c for c in final_columns if c not in df.columns]
 if missing_final:
-    raise ValueError(
-        f"Missing final columns: {missing_final}"
-    )
-
+    raise ValueError(f"Missing output columns: {missing_final}")
 
 result = df[final_columns].copy()
 
+# ------------------------------------------------------------
+# VALIDATE BEFORE PUBLISHING
+# ------------------------------------------------------------
 
-# ============================================================
-# 10. SAVE DATASET
-# ============================================================
-
-print("\n[5/6] Saving dynamic risk dataset...")
-
-result.to_csv(
-    OUTPUT_FILE,
-    index=False
-)
-
-
-# ============================================================
-# 11. ANALYSIS
-# ============================================================
-
-print("\n[6/6] Dynamic risk analysis...")
-
-
-print("\nDynamic risk statistics:")
-
-print(
-    result["dynamic_risk"].describe()
-)
-
-
-print("\nDynamic risk categories:")
-
-print(
-    result["dynamic_risk_category"]
-    .value_counts()
-)
-
-
-print("\nRoad closures:")
-
-print(
-    result["road_closure"]
-    .value_counts()
-)
-
-
-print("\nRisk component statistics:")
-
-print(
-    result[
-        [
-            "historical_risk",
-            "traffic_risk",
-            "weather_risk",
-            "dynamic_risk",
-        ]
-    ].describe()
-)
-
-
-print("\nSample:")
-
-print(
-    result[
-        [
-            "osm_u",
-            "osm_v",
-            "historical_risk",
-            "traffic_risk",
-            "weather_risk",
-            "dynamic_risk",
-            "dynamic_risk_category",
-            "road_closure",
-        ]
-    ]
-    .head(15)
-    .to_string(index=False)
-)
-
-
-# ============================================================
-# 12. EXTREME-RISK ROADS
-# ============================================================
-
-print("\nHighest-risk roads:")
-
-highest_risk = (
-    result[
-        [
-            "osm_u",
-            "osm_v",
-            "road_name",
-            "historical_risk",
-            "traffic_risk",
-            "weather_risk",
-            "dynamic_risk",
-            "dynamic_risk_category",
-            "road_closure",
-        ]
-    ]
-    .sort_values(
-        "dynamic_risk",
-        ascending=False
+# Preserve the existing output unless the new dataset passes checks.
+if result.empty:
+    raise ValueError(
+        "Refusing to publish an empty dynamic-risk dataset."
     )
-    .head(10)
-)
 
-print(
-    highest_risk.to_string(index=False)
-)
+if len(result) != len(weather):
+    raise ValueError(
+        "Output row count differs from weather input. "
+        "Existing output preserved."
+    )
 
+if result[KEYS].isna().any().any():
+    raise ValueError(
+        "Output contains missing road identifiers. "
+        "Existing output preserved."
+    )
 
-print("\n" + "=" * 70)
-print("DYNAMIC ROAD RISK DATASET CREATED")
-print("=" * 70)
+if result.duplicated(KEYS).any():
+    raise ValueError(
+        "Output contains duplicate road identifiers. "
+        "Existing output preserved."
+    )
 
-print(f"\nRoad segments : {len(result):,}")
-print(f"Output file   : {OUTPUT_FILE}")
+complete_count = int(result["risk_data_status"].eq("COMPLETE").sum())
+coverage = complete_count / len(result)
 
-print("\nRisk weights:")
-print("Historical : 50%")
-print("Traffic   : 30%")
-print("Weather   : 20%")
+if coverage < MIN_COMPLETE_COVERAGE:
+    raise ValueError(
+        f"Complete risk coverage {coverage:.1%} is below "
+        f"required {MIN_COMPLETE_COVERAGE:.0%}. "
+        "Existing output preserved."
+    )
 
-print("\n" + "=" * 70)
-print("DONE")
-print("=" * 70)
+available_risk = result["dynamic_risk"].dropna()
+
+if available_risk.empty:
+    raise ValueError(
+        "No usable dynamic-risk scores available. "
+        "Existing output preserved."
+    )
+
+if not np.isfinite(available_risk.to_numpy(dtype=float)).all():
+    raise ValueError(
+        "Output contains invalid dynamic-risk scores. "
+        "Existing output preserved."
+    )
+
+if not available_risk.between(MIN_RISK_SCORE, MAX_RISK_SCORE).all():
+    raise ValueError(
+        "Dynamic-risk scores are outside the allowed range. "
+        "Existing output preserved."
+    )
+
+# Write to a temporary file, then atomically replace the output.
+temporary_file = OUTPUT_FILE + ".tmp"
+
+try:
+    result.to_csv(temporary_file, index=False)
+
+    check_df = pd.read_csv(temporary_file)
+
+    if len(check_df) != len(result):
+        raise ValueError(
+            "Temporary dynamic-risk dataset has an unexpected row count. "
+            "Existing output preserved."
+        )
+
+    if check_df.duplicated(KEYS).any():
+        raise ValueError(
+            "Temporary dynamic-risk dataset contains duplicate road identifiers. "
+            "Existing output preserved."
+        )
+
+    os.replace(temporary_file, OUTPUT_FILE)
+
+finally:
+    if os.path.exists(temporary_file):
+        os.remove(temporary_file)
+
+# ------------------------------------------------------------
+# 7. SUMMARY
+# ------------------------------------------------------------
+print("\n[7/7] Validation summary")
+
+print("\nRisk-data status:")
+print(result["risk_data_status"].value_counts(dropna=False))
+
+print("\nDynamic-risk categories:")
+print(result["dynamic_risk_category"].value_counts(dropna=False))
+
+print("\nComponent missing values:")
+print(result[required_components].isna().sum())
+
+print("\nDynamic risk statistics (available scores):")
+print(result["dynamic_risk"].describe().round(2))
+
+print("\nTraffic observation range:")
+print(result["traffic_observation_time"].min(), "to",
+      result["traffic_observation_time"].max())
+
+print("\nWeather observation range:")
+print(result["observation_time"].min(), "to",
+      result["observation_time"].max())
+
+print("\nOutput:", OUTPUT_FILE)
+print("Road segments:", len(result))
+print("Confirmed closed roads:", int(result["road_closure"].sum()))
+print("\nWeights: historical 50%, traffic 30%, weather 20%")
+print("These are prototype engineering weights, not calibrated probabilities.")
+print("\nDYNAMIC RISK DATASET CREATED")

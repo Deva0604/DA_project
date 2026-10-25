@@ -118,10 +118,33 @@ def rank_journey(group):
         group["travel_time_min"] / fastest_time - 1
     ) * 100
 
-    # Prefer routes within 20% of the fastest route.
+    # Calculate normalized scores for ALL valid candidates, including
+    # safety-fallback routes that may sit outside the time-eligible set.
+    # Balanced score: 60% normalized time, 40% normalized risk.
+    group["normalized_time"] = normalize(group["travel_time_min"])
+    group["normalized_risk"] = normalize(
+        group["distance_weighted_dynamic_risk"]
+    )
+    group["balanced_score"] = (
+        0.60 * group["normalized_time"]
+        + 0.40 * group["normalized_risk"]
+    )
+
+    # Keep the existing route eligibility and selection rules unchanged.
     eligible = group[
         group["travel_time_min"] <= normal_limit
     ].copy().reset_index(drop=True)
+
+    if eligible.empty:
+        return pd.DataFrame(), {
+            "candidate_count": len(group),
+            "eligible_count": 0,
+            "recommended_count": 0,
+            "fastest_time_min": fastest_time,
+            "time_limit_min": normal_limit,
+            "mean_pairwise_overlap_percent": None,
+            "status": "NO_TIME_ELIGIBLE_CANDIDATES",
+        }
 
     preferred_eligible_count = len(eligible)
     fallback_used = False
@@ -136,29 +159,6 @@ def rank_journey(group):
         if len(fallback) > len(eligible):
             eligible = fallback
             fallback_used = True
-
-    if eligible.empty:
-        return pd.DataFrame(), {
-            "candidate_count": len(group),
-            "eligible_count": 0,
-            "recommended_count": 0,
-            "fastest_time_min": fastest_time,
-            "time_limit_min": normal_limit,
-            "mean_pairwise_overlap_percent": None,
-            "status": "NO_TIME_ELIGIBLE_CANDIDATES",
-        }
-
-    # Balanced score: 60% normalized time, 40% normalized risk.
-    eligible["normalized_time"] = normalize(
-        eligible["travel_time_min"]
-    )
-    eligible["normalized_risk"] = normalize(
-        eligible["distance_weighted_dynamic_risk"]
-    )
-    eligible["balanced_score"] = (
-        0.60 * eligible["normalized_time"]
-        + 0.40 * eligible["normalized_risk"]
-    )
 
     # Build a preferred ordering. The route selected for each category
     # must be distinct and pass the route-overlap filter.

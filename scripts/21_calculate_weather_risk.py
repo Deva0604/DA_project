@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import numpy as np
 
@@ -247,12 +248,81 @@ df["weather_risk_category"] = df["weather_risk"].apply(
 # SAVE
 # ============================================================
 
-print("\n[4/5] Saving weather-risk dataset...")
+print("\n[4/5] Validating and saving weather-risk dataset...")
 
-df.to_csv(
-    OUTPUT_FILE,
-    index=False
-)
+# Validate that required risk inputs are available.
+required_input_columns = [
+    "osm_u",
+    "osm_v",
+    "osm_key",
+    "temperature_c",
+    "humidity_percent",
+    "rain_mm",
+    "weather_code",
+    "wind_speed_kmh",
+    "weather_risk",
+    "weather_risk_category",
+]
+
+missing_columns = [
+    column for column in required_input_columns
+    if column not in df.columns
+]
+
+if missing_columns:
+    raise ValueError(
+        f"Cannot save weather-risk dataset. Missing columns: {missing_columns}"
+    )
+
+# Require unique road identifiers.
+road_keys = ["osm_u", "osm_v", "osm_key"]
+
+if df[road_keys].isna().any().any():
+    raise ValueError(
+        "Cannot save weather-risk dataset: road identifiers contain missing values."
+    )
+
+if df.duplicated(road_keys).any():
+    raise ValueError(
+        "Cannot save weather-risk dataset: duplicate road identifiers detected."
+    )
+
+# Reject non-finite risk scores.
+if not np.isfinite(df["weather_risk"].to_numpy(dtype=float)).all():
+    raise ValueError(
+        "Cannot save weather-risk dataset: invalid or missing weather-risk scores."
+    )
+
+if not df["weather_risk"].between(0, 100).all():
+    raise ValueError(
+        "Cannot save weather-risk dataset: risk scores are outside 0–100."
+    )
+
+# Write to a temporary file before replacing the previous output.
+temporary_file = OUTPUT_FILE + ".tmp"
+
+try:
+    df.to_csv(temporary_file, index=False)
+
+    # Check that the temporary output can be read back.
+    check_df = pd.read_csv(temporary_file)
+
+    if len(check_df) != len(df):
+        raise ValueError(
+            "Temporary weather-risk dataset has an unexpected row count."
+        )
+
+    if check_df.duplicated(road_keys).any():
+        raise ValueError(
+            "Temporary weather-risk dataset contains duplicate road identifiers."
+        )
+
+    # Publish only after validation succeeds.
+    os.replace(temporary_file, OUTPUT_FILE)
+
+finally:
+    if os.path.exists(temporary_file):
+        os.remove(temporary_file)
 
 
 # ============================================================

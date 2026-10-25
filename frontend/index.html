@@ -80,8 +80,8 @@ header {
 }
 
 main {
-  padding: 22px;
-  max-width: 1600px;
+  padding: 26px;
+  max-width: 1760px;
   margin: auto;
 }
 
@@ -99,8 +99,8 @@ main {
 .stats {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 13px;
-  margin: 20px 0;
+  gap: 14px;
+  margin: 22px 0;
 }
 
 .stat, .panel {
@@ -109,36 +109,106 @@ main {
   border-radius: 15px;
 }
 
-.stat { padding: 17px; }
-.stat .label { color: var(--muted); font-size: 12px; }
-.stat .value { font-size: 25px; font-weight: 750; margin-top: 7px; }
+.stat { padding: 20px; }
+.stat .label { color: var(--muted); font-size: 12.5px; }
+.stat .value { font-size: 28px; font-weight: 800; margin-top: 8px; }
+
+.data-status-panel {
+  margin: 20px 0;
+  padding: 18px;
+}
+
+.data-status-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 15px;
+}
+
+.data-status-header h3 {
+  margin: 0 0 5px;
+  font-size: 16px;
+}
+
+.data-status-header p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.data-status-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.data-status-card {
+  padding: 14px;
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  min-width: 0;
+}
+
+.data-status-label {
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.data-status-value {
+  font-size: 18px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.data-status-detail {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.fresh { color: var(--green); }
+.stale { color: var(--red); }
+.unavailable { color: var(--orange); }
+
+@media (max-width: 650px) {
+  .data-status-grid {
+    grid-template-columns: 1fr;
+  }
+}
 
 .workspace {
   display: grid;
-  grid-template-columns: 360px minmax(0, 1fr);
-  gap: 18px;
+  grid-template-columns: 410px minmax(0, 1fr);
+  gap: 20px;
   align-items: start;
 }
 
 .panel { overflow: hidden; }
-.panel-heading { padding: 18px 18px 12px; }
-.panel-heading h3 { margin: 0 0 6px; font-size: 16px; }
-.panel-heading p { margin: 0; font-size: 12px; color: var(--muted); }
+.panel-heading { padding: 20px 20px 14px; }
+.panel-heading h3 { margin: 0 0 6px; font-size: 17px; }
+.panel-heading p { margin: 0; font-size: 13px; color: var(--muted); }
 
-.controls { padding: 0 18px 18px; }
+.controls { padding: 0 20px 20px; }
 
 label {
   display: block;
-  margin: 15px 0 8px;
-  font-size: 12px;
+  margin: 16px 0 9px;
+  font-size: 12.5px;
   color: var(--muted);
+  font-weight: 600;
 }
 
 select, button {
   width: 100%;
   border-radius: 9px;
-  padding: 12px;
+  padding: 13px;
   font: inherit;
+  font-size: 14px;
 }
 
 select {
@@ -148,12 +218,13 @@ select {
 }
 
 button {
-  margin-top: 14px;
+  margin-top: 16px;
   border: 0;
   color: #061b16;
   background: var(--green);
-  font-weight: 750;
+  font-weight: 800;
   cursor: pointer;
+  font-size: 14px;
 }
 
 button:disabled { opacity: 0.5; cursor: wait; }
@@ -168,20 +239,21 @@ button:disabled { opacity: 0.5; cursor: wait; }
   line-height: 1.5;
 }
 
-.route-list { padding: 0 12px 12px; }
+.route-list { padding: 0 16px 16px; }
 
 .route-card {
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 13px;
-  margin-top: 10px;
+  border-radius: 13px;
+  padding: 16px;
+  margin-top: 12px;
   cursor: pointer;
   background: #101a2a;
-  transition: border-color 0.15s;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 .route-card:hover, .route-card.active {
   border-color: var(--green);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.25);
 }
 
 .route-top {
@@ -189,34 +261,36 @@ button:disabled { opacity: 0.5; cursor: wait; }
   justify-content: space-between;
   gap: 8px;
   align-items: center;
+  margin-bottom: 6px;
 }
 
 .badge {
   display: inline-block;
   border-radius: 6px;
-  padding: 5px 7px;
-  font-size: 10px;
+  padding: 6px 9px;
+  font-size: 11px;
   font-weight: 800;
   text-transform: uppercase;
   background: #203b34;
   color: var(--green);
 }
 
-.route-card h4 { margin: 10px 0; font-size: 14px; }
+.route-card h4 { margin: 10px 0 8px; font-size: 15px; }
 
 .route-metrics {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 7px;
+  gap: 9px;
+  margin-top: 4px;
 }
 
-.metric-label { color: var(--muted); font-size: 10px; }
-.metric-value { margin-top: 4px; font-weight: 700; font-size: 13px; }
+.metric-label { color: var(--muted); font-size: 11px; }
+.metric-value { margin-top: 5px; font-weight: 800; font-size: 14.5px; }
 
 .map-panel { min-width: 0; }
 
 .map-toolbar {
-  padding: 15px 18px;
+  padding: 16px 20px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -225,26 +299,26 @@ button:disabled { opacity: 0.5; cursor: wait; }
   border-bottom: 1px solid var(--border);
 }
 
-.map-toolbar h3 { margin: 0; font-size: 15px; }
+.map-toolbar h3 { margin: 0; font-size: 16px; }
 
-.legend { display: flex; flex-wrap: wrap; gap: 12px; color: var(--muted); font-size: 11px; }
-.legend span { display: inline-flex; align-items: center; gap: 5px; }
-.swatch { width: 17px; height: 4px; border-radius: 5px; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; color: var(--muted); font-size: 12px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.swatch { width: 20px; height: 5px; border-radius: 6px; }
 
-#map { height: 610px; width: 100%; background: #dbe6e8; }
+#map { height: 640px; width: 100%; background: #dbe6e8; }
 
 .map-caption {
-  padding: 12px 16px;
-  font-size: 11px;
+  padding: 12px 20px;
+  font-size: 12.5px;
   color: var(--muted);
   line-height: 1.6;
 }
 
 footer {
-  padding: 22px;
+  padding: 26px;
   text-align: center;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .error { color: var(--red); }
@@ -260,12 +334,13 @@ footer {
 }
 
 @media (max-width: 520px) {
-  main { padding: 13px; }
+  main { padding: 16px; }
   header { padding: 14px; }
-  .stats { gap: 7px; }
-  .stat { padding: 11px; }
-  .stat .value { font-size: 20px; }
+  .stats { gap: 8px; }
+  .stat { padding: 14px; }
+  .stat .value { font-size: 22px; }
   #map { height: 380px; }
+  .workspace { grid-template-columns: 1fr; }
 }
 </style>
 </head>
@@ -303,6 +378,50 @@ footer {
     <div class="stat">
       <div class="label">DATA SOURCE</div>
       <div class="value" style="font-size:17px">Road-risk engine</div>
+    </div>
+  </section>
+
+  <section class="panel data-status-panel">
+    <div class="data-status-header">
+      <div>
+        <h3>Live Data Status</h3>
+        <p>Traffic and weather observation freshness</p>
+      </div>
+      <span id="dataOverallStatus" class="unavailable">
+        Checking data...
+      </span>
+    </div>
+
+    <div class="data-status-grid">
+      <div class="data-status-card">
+        <div class="data-status-label">TOMTOM TRAFFIC</div>
+        <div class="data-status-value unavailable" id="trafficFreshness">
+          Checking...
+        </div>
+        <div class="data-status-detail" id="trafficDetails">
+          Waiting for API response.
+        </div>
+      </div>
+
+      <div class="data-status-card">
+        <div class="data-status-label">WEATHER</div>
+        <div class="data-status-value unavailable" id="weatherFreshness">
+          Checking...
+        </div>
+        <div class="data-status-detail" id="weatherDetails">
+          Waiting for API response.
+        </div>
+      </div>
+
+      <div class="data-status-card">
+        <div class="data-status-label">ROAD RISK COVERAGE</div>
+        <div class="data-status-value unavailable" id="riskCoverage">
+          Checking...
+        </div>
+        <div class="data-status-detail" id="riskDetails">
+          Waiting for API response.
+        </div>
+      </div>
     </div>
   </section>
 
@@ -399,6 +518,123 @@ function clearRouteLayers() {
 function formatNumber(value, digits = 1) {
   const n = Number(value);
   return Number.isFinite(n) ? n.toFixed(digits) : "—";
+}
+
+function freshnessClass(status) {
+  if (status === "FRESH") return "fresh";
+  if (status === "STALE") return "stale";
+  return "unavailable";
+}
+
+function formatAge(minutes) {
+  const age = Number(minutes);
+
+  if (!Number.isFinite(age) || age < 0) {
+    return "Age unavailable";
+  }
+
+  if (age < 60) {
+    return `${Math.round(age)} minutes old`;
+  }
+
+  const hours = Math.floor(age / 60);
+  const remainingMinutes = Math.round(age % 60);
+
+  if (hours < 48) {
+    return `${hours}h ${remainingMinutes}m old`;
+  }
+
+  const days = Math.floor(hours / 24);
+  return `${days}d ${hours % 24}h old`;
+}
+
+async function loadDataStatus() {
+  try {
+    const [statusResponse, summaryResponse] = await Promise.all([
+      fetch(`${API}/api/data-status`),
+      fetch(`${API}/api/dynamic-risk/summary`)
+    ]);
+
+    if (!statusResponse.ok || !summaryResponse.ok) {
+      throw new Error("Could not load data-status information.");
+    }
+
+    const status = await statusResponse.json();
+    const summary = await summaryResponse.json();
+
+    const traffic = status.traffic || {};
+    const weather = status.weather || {};
+
+    $("trafficFreshness").textContent =
+      traffic.freshness || "UNAVAILABLE";
+
+    $("trafficFreshness").className =
+      `data-status-value ${freshnessClass(traffic.freshness)}`;
+
+    $("trafficDetails").textContent =
+      `Collection: ${traffic.status || "UNKNOWN"} · ` +
+      `${formatAge(traffic.age_minutes)} · ` +
+      `Limit: ${traffic.threshold_minutes ?? "—"} min`;
+
+    $("weatherFreshness").textContent =
+      weather.freshness || "UNAVAILABLE";
+
+    $("weatherFreshness").className =
+      `data-status-value ${freshnessClass(weather.freshness)}`;
+
+    $("weatherDetails").textContent =
+      `Collection: ${weather.status || "UNKNOWN"} · ` +
+      `${formatAge(weather.age_minutes)} · ` +
+      `Limit: ${weather.threshold_minutes ?? "—"} min`;
+
+    const complete = Number(summary.complete_risk_count) || 0;
+    const closed = Number(summary.closed_classification_count) || 0;
+    const total = Number(summary.road_segment_count) || 0;
+
+    $("riskCoverage").textContent =
+      `${complete.toLocaleString()} / ${total.toLocaleString()}`;
+
+    $("riskCoverage").className =
+      "data-status-value " +
+      (complete > 0 && total > 0 ? "fresh" : "unavailable");
+
+    $("riskDetails").textContent =
+      `${closed.toLocaleString()} segments classified as closed · ` +
+      `Mean risk: ${formatNumber(summary.mean_dynamic_risk)}/100`;
+
+    const allFresh =
+      traffic.freshness === "FRESH" &&
+      weather.freshness === "FRESH";
+
+    const allAvailable =
+      traffic.freshness &&
+      weather.freshness &&
+      traffic.freshness !== "UNAVAILABLE" &&
+      weather.freshness !== "UNAVAILABLE";
+
+    $("dataOverallStatus").textContent = allFresh
+      ? "DATA FRESH"
+      : allAvailable
+        ? "OUTDATED DATA"
+        : "DATA STATUS UNKNOWN";
+
+    $("dataOverallStatus").className =
+      allFresh ? "fresh" : allAvailable ? "stale" : "unavailable";
+
+  } catch (error) {
+    $("dataOverallStatus").textContent = "STATUS UNAVAILABLE";
+    $("dataOverallStatus").className = "unavailable";
+
+    $("trafficFreshness").textContent = "Unavailable";
+    $("weatherFreshness").textContent = "Unavailable";
+    $("riskCoverage").textContent = "Unavailable";
+
+    $("trafficDetails").textContent = "Could not retrieve traffic status.";
+    $("weatherDetails").textContent = "Could not retrieve weather status.";
+    $("riskDetails").textContent = "Could not retrieve road-risk summary.";
+
+    console.error("Data status error:", error);
+  }
 }
 
 function riskDescription(value) {
@@ -610,6 +846,7 @@ $("showRoutes").addEventListener("click", showRoutes);
 $("journeySelect").addEventListener("change", showRoutes);
 
 loadJourneys();
+loadDataStatus();
 </script>
 </body>
 </html>

@@ -1,0 +1,403 @@
+#!/usr/bin/env python3
+
+import os
+import time
+from pathlib import Path
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+import pandas as pd
+import requests
+from dotenv import load_dotenv
+
+
+# --------------------------------------------------
+# Configuration
+# --------------------------------------------------
+
+ROOT = Path(__file__).resolve().parents[1]
+
+INPUT_FILE = ROOT / "data/processed/road_traffic_targets.csv"
+OUTPUT_FILE = ROOT / "data/processed/road_live_traffic_full.csv"
+
+ENV_FILE = ROOT / ".env"
+
+ENDPOINT = (
+    "https://api.tomtom.com/traffic/services/"
+    "4/flowSegmentData/absolute/10/json"
+)
+
+SAVE_EVERY = 5
+REQUEST_DELAY_SECONDS = 1.5
+REQUEST_TIMEOUT_SECONDS = 20
+MAX_RETRIES = 2
+# Initial validation: process only 10 roads.
+# Change to None only after the test succeeds.
+LIMIT_ROADS = None
+
+TIMEZONE = ZoneInfo("Asia/Kolkata")
+
+TRAFFIC_COLUMNS = [
+    "current_speed_kmh",
+    "free_flow_speed_kmh",
+    "current_travel_time_sec",
+    "free_flow_travel_time_sec",
+    "traffic_confidence",
+    "road_closure",
+    "congestion_ratio",
+    "traffic_risk",
+    "traffic_status",
+    "traffic_observation_time",
+    "traffic_http_status",
+    "traffic_error",
+]
+
+
+def now_local():
+    return datetime.now(TIMEZONE).isoformat(timespec="seconds")
+
+
+def load_input():
+    if not INPUT_FILE.exists():
+        raise FileNotFoundError(f"Input file not found: {INPUT_FILE}")
+
+    df = pd.read_csv(INPUT_FILE)
+
+    required = {
+        "osm_u",
+        "osm_v",
+        "osm_key",
+        "traffic_latitude",
+        "traffic_longitude",
+    }
+
+    missing = required - set(df.columns)
+
+    if missing:
+        raise ValueError(
+            f"Input file is missing required columns: {sorted(missing)}"
+        )
+
+    if df.duplicated(["osm_u", "osm_v", "osm_key"]).any():
+        raise ValueError("Duplicate road identifiers found in input.")
+
+    return df
+
+
+def load_existing():
+    if not OUTPUT_FILE.exists():
+        return pd.DataFrame()
+
+    existing = pd.read_csv(OUTPUT_FILE)
+
+    required = {"osm_u", "osm_v", "osm_key"}
+
+    if not required.issubset(existing.columns):
+        raise ValueError(
+            "Existing refresh file lacks road identifiers. "
+            "Move it aside manually before restarting."
+        )
+
+    if existing.duplicated(["osm_u", "osm_v", "osm_key"]).any():
+        raise ValueError(
+            "Existing refresh file has duplicate road identifiers."
+        )
+
+    return existing
+
+
+def blank_result():
+    return {
+        "current_speed_kmh": None,
+        "free_flow_speed_kmh": None,
+        "current_travel_time_sec": None,
+        "free_flow_travel_time_sec": None,
+        "traffic_confidence": None,
+        "road_closure": None,
+        "congestion_ratio": None,
+        "traffic_risk": None,
+        "traffic_status": "FAILED",
+        "traffic_observation_time": now_local(),
+        "traffic_http_status": None,
+        "traffic_error": None,
+    }
+
+
+def fetch_traffic(session, api_key, latitude, longitude):
+    result = blank_result()
+
+    if pd.isna(latitude) or pd.isna(longitude):
+        result["traffic_error"] = "MISSING_COORDINATES"
+        return result
+
+    params = {
+        "key": api_key,
+        "point": f"{float(latitude)},{float(longitude)}",
+        "unit": "KMPH",
+    }
+
+    for attempt in range(MAX_RETRIES + 1):
+        result["traffic_observation_time"] = now_local()
+
+        try:
+            response = session.get(
+                ENDPOINT,
+                params=params,
+                timeout=REQUEST_TIMEOUT_SECONDS,
+            )
+
+            result["traffic_http_status"] = response.status_code
+
+            if response.status_code != 200:
+                result["traffic_error"] = (
+                    f"HTTP_{response.status_code}"
+                )
+
+                # Avoid continuing if authentication or quota is rejected.
+                if response.status_code in (401, 403, 429):
+                    return result
+
+                if response.status_code >= 500 and attempt < MAX_RETRIES:
+                    time.sleep(2 ** attempt)
+                    continue
+
+                return result
+
+            try:
+                payload = response.json()
+            except ValueError:
+                result["traffic_error"] = "INVALID_JSON"
+                return result
+
+            flow = payload.get("flowSegmentData")
+
+            if not isinstance(flow, dict):
+                result["traffic_error"] = "MISSING_FLOW_SEGMENT_DATA"
+                return result
+
+            current = flow.get("currentSpeed")
+            free_flow = flow.get("freeFlowSpeed")
+
+            if (
+                not isinstance(current, (int, float))
+                or isinstance(current, bool)
+                or not isinstance(free_flow, (int, float))
+                or isinstance(free_flow, bool)
+                or current < 0
+                or free_flow <= 0
+            ):
+                result["traffic_error"] = "INVALID_SPEED_DATA"
+                return result
+
+            congestion = max(
+                0.0,
+                min(1.0, 1.0 - current / free_flow),
+            )
+
+            result.update({
+                "current_speed_kmh": current,
+                "free_flow_speed_kmh": free_flow,
+                "current_travel_time_sec": flow.get(
+                    "currentTravelTime"
+                ),
+                "free_flow_travel_time_sec": flow.get(
+                    "freeFlowTravelTime"
+                ),
+                "traffic_confidence": flow.get("confidence"),
+                "road_closure": flow.get("roadClosure"),
+                "congestion_ratio": congestion,
+                "traffic_risk": congestion * 100.0,
+                "traffic_status": "SUCCESS",
+                "traffic_error": None,
+            })
+
+            return result
+
+        except requests.RequestException as exc:
+            result["traffic_error"] = type(exc).__name__
+
+            if attempt < MAX_RETRIES:
+                time.sleep(2 ** attempt)
+
+    return result
+
+
+def atomic_save(df):
+    temp_file = OUTPUT_FILE.with_suffix(".csv.tmp")
+    df.to_csv(temp_file, index=False)
+    temp_file.replace(OUTPUT_FILE)
+
+
+def main():
+    load_dotenv(dotenv_path=ENV_FILE)
+
+    api_key = os.getenv("TOMTOM_API_KEY")
+
+    if not api_key or not api_key.strip():
+        raise SystemExit(
+            "ERROR: TOMTOM_API_KEY is not configured in .env"
+        )
+
+    targets = load_input()
+    if LIMIT_ROADS is not None:
+        targets = targets.head(LIMIT_ROADS).copy()
+    existing = load_existing()
+
+    # Preserve existing target columns and their order.
+    output_columns = list(targets.columns)
+
+    for column in TRAFFIC_COLUMNS:
+        if column not in output_columns:
+            output_columns.append(column)
+
+    # Keep only known columns and preserve existing observations.
+    if not existing.empty:
+        existing = existing[
+            existing["traffic_status"].isin(["SUCCESS", "FAILED"])
+        ].copy()
+
+        existing_keys = set(
+            zip(existing["osm_u"], existing["osm_v"], existing["osm_key"])
+        )
+    else:
+        existing_keys = set()
+
+    target_keys = list(
+        zip(targets["osm_u"], targets["osm_v"], targets["osm_key"])
+    )
+
+    target_key_set = set(target_keys)
+
+    # Discard records that are no longer part of the target set.
+    if not existing.empty:
+        existing = existing[
+            [
+                (u, v, k) in target_key_set
+                for u, v, k in zip(
+                    existing["osm_u"],
+                    existing["osm_v"],
+                    existing["osm_key"],
+                )
+            ]
+        ].copy()
+
+        existing_keys = set(
+            zip(existing["osm_u"], existing["osm_v"], existing["osm_key"])
+        )
+
+    # Resume successful records. Failed records are retried on the next run.
+    successful_keys = set()
+
+    if not existing.empty:
+        successful_keys = set(
+            zip(
+                existing.loc[
+                    existing["traffic_status"] == "SUCCESS", "osm_u"
+                ],
+                existing.loc[
+                    existing["traffic_status"] == "SUCCESS", "osm_v"
+                ],
+                existing.loc[
+                    existing["traffic_status"] == "SUCCESS", "osm_key"
+                ],
+            )
+        )
+
+    records = {
+        (row["osm_u"], row["osm_v"], row["osm_key"]): row.to_dict()
+        for _, row in existing.iterrows()
+    }
+
+    pending = [
+        index
+        for index, key in enumerate(target_keys)
+        if key not in successful_keys
+    ]
+
+    print(f"Target roads: {len(targets)}")
+    print(f"Previously successful roads: {len(successful_keys)}")
+    print(f"Roads remaining/requiring retry: {len(pending)}")
+    print(f"Output file: {OUTPUT_FILE}")
+    print("API key value will not be displayed.")
+
+    session = requests.Session()
+    completed_this_run = 0
+
+    try:
+        for index in pending:
+            row = targets.iloc[index]
+
+            key = (
+                row["osm_u"],
+                row["osm_v"],
+                row["osm_key"],
+            )
+
+            result = fetch_traffic(
+                session,
+                api_key.strip(),
+                row["traffic_latitude"],
+                row["traffic_longitude"],
+            )
+
+            record = row.to_dict()
+            record.update(result)
+            records[key] = record
+
+            completed_this_run += 1
+
+            if (
+                completed_this_run == 1
+                or completed_this_run % 10 == 0
+                or completed_this_run == len(pending)
+            ):
+                print(
+                    f"Progress: {completed_this_run}/{len(pending)} "
+                    f"this run | "
+                    f"successes: "
+                    f"{sum(r.get('traffic_status') == 'SUCCESS' for r in records.values())}"
+                )
+
+            if completed_this_run % SAVE_EVERY == 0:
+                snapshot = pd.DataFrame(
+                    list(records.values())
+                ).reindex(columns=output_columns)
+                atomic_save(snapshot)
+                print(f"Checkpoint saved: {len(records)} roads")
+
+            # Stop promptly on authentication/quota rejection.
+            if result["traffic_http_status"] in (401, 403, 429):
+                print(
+                    "\nStopping because TomTom returned HTTP "
+                    f"{result['traffic_http_status']}. "
+                    "Saved progress before exiting."
+                )
+                break
+
+            time.sleep(REQUEST_DELAY_SECONDS)
+
+    except KeyboardInterrupt:
+        print("\nInterrupted. Saving progress before exit.")
+
+    finally:
+        snapshot = pd.DataFrame(
+            list(records.values())
+        ).reindex(columns=output_columns)
+
+        atomic_save(snapshot)
+        session.close()
+
+    final = pd.read_csv(OUTPUT_FILE)
+
+    success_count = int((final["traffic_status"] == "SUCCESS").sum())
+    failed_count = int((final["traffic_status"] != "SUCCESS").sum())
+
+    print("\n=== Collector summary ===")
+    print("Rows saved:", len(final))
+    print("Successful traffic readings:", success_count)
+    print("Failed or incomplete readings:", failed_count)
+    print("Output:", OUTPUT_FILE)
+
+
+if __name__ == "__main__":
+    main()

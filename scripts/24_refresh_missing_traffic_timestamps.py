@@ -1,0 +1,428 @@
+#!/usr/bin/env python3
+
+import os
+import time
+from pathlib import Path
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+import pandas as pd
+import requests
+from dotenv import load_dotenv
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+INPUT_FILE = ROOT / "data/processed/road_traffic_targets.csv"
+PRODUCTION_FILE = ROOT / "data/processed/road_live_traffic_full.csv"
+STAGING_FILE = ROOT / "data/processed/road_live_traffic_timestamp_repair_staging.csv"
+ENV_FILE = ROOT / ".env"
+
+ENDPOINT = (
+    "https://api.tomtom.com/traffic/services/"
+    "4/flowSegmentData/absolute/10/json"
+)
+
+TIMEZONE = ZoneInfo("Asia/Kolkata")
+REQUEST_DELAY_SECONDS = 1.5
+REQUEST_TIMEOUT_SECONDS = 20
+MAX_RETRIES = 2
+
+KEYS = ["osm_u", "osm_v", "osm_key"]
+
+TRAFFIC_COLUMNS = [
+    "current_speed_kmh",
+    "free_flow_speed_kmh",
+    "current_travel_time_sec",
+    "free_flow_travel_time_sec",
+    "traffic_confidence",
+    "road_closure",
+    "congestion_ratio",
+    "traffic_risk",
+    "traffic_status",
+    "traffic_observation_time",
+    "traffic_http_status",
+    "traffic_error",
+]
+
+
+def now_local():
+    return datetime.now(TIMEZONE).isoformat(timespec="seconds")
+
+
+def validate_success(row):
+    current = pd.to_numeric(
+        pd.Series([row["current_speed_kmh"]]), errors="coerce"
+    ).iloc[0]
+
+    free_flow = pd.to_numeric(
+        pd.Series([row["free_flow_speed_kmh"]]), errors="coerce"
+    ).iloc[0]
+
+    risk = pd.to_numeric(
+        pd.Series([row["traffic_risk"]]), errors="coerce"
+    ).iloc[0]
+
+    if pd.isna(current) or current < 0:
+        return False
+
+    if pd.isna(free_flow) or free_flow <= 0:
+        return False
+
+    if pd.isna(risk) or not 0 <= risk <= 100:
+        return False
+
+    return True
+
+
+def fetch_traffic(session, api_key, latitude, longitude):
+    result = {
+        column: None for column in TRAFFIC_COLUMNS
+    }
+    result["traffic_status"] = "FAILED"
+    result["traffic_error"] = None
+
+    if pd.isna(latitude) or pd.isna(longitude):
+        result["traffic_error"] = "MISSING_COORDINATES"
+        return result
+
+    params = {
+        "key": api_key,
+        "point": f"{float(latitude)},{float(longitude)}",
+        "unit": "KMPH",
+    }
+
+    for attempt in range(MAX_RETRIES + 1):
+        # Capture the actual request-start time, not an invented
+        # timestamp assigned later to an old observation.
+        request_time = now_local()
+
+        try:
+            response = session.get(
+                ENDPOINT,
+                params=params,
+                timeout=REQUEST_TIMEOUT_SECONDS,
+            )
+
+            result["traffic_http_status"] = response.status_code
+
+            if response.status_code != 200:
+                result["traffic_error"] = (
+                    f"HTTP_{response.status_code}"
+                )
+
+                if response.status_code in (401, 403, 429):
+                    result["traffic_observation_time"] = request_time
+                    return result
+
+                if response.status_code >= 500 and attempt < MAX_RETRIES:
+                    time.sleep(2 ** attempt)
+                    continue
+
+                result["traffic_observation_time"] = request_time
+                return result
+
+            try:
+                payload = response.json()
+            except ValueError:
+                result["traffic_error"] = "INVALID_JSON"
+                result["traffic_observation_time"] = request_time
+                return result
+
+            flow = payload.get("flowSegmentData")
+
+            if not isinstance(flow, dict):
+                result["traffic_error"] = "MISSING_FLOW_SEGMENT_DATA"
+                result["traffic_observation_time"] = request_time
+                return result
+
+            current = flow.get("currentSpeed")
+            free_flow = flow.get("freeFlowSpeed")
+
+            if (
+                not isinstance(current, (int, float))
+                or isinstance(current, bool)
+                or not isinstance(free_flow, (int, float))
+                or isinstance(free_flow, bool)
+                or current < 0
+                or free_flow <= 0
+            ):
+                result["traffic_error"] = "INVALID_SPEED_DATA"
+                result["traffic_observation_time"] = request_time
+                return result
+
+            congestion = max(
+                0.0,
+                min(1.0, 1.0 - current / free_flow),
+            )
+
+            result.update({
+                "current_speed_kmh": current,
+                "free_flow_speed_kmh": free_flow,
+                "current_travel_time_sec": flow.get(
+                    "currentTravelTime"
+                ),
+                "free_flow_travel_time_sec": flow.get(
+                    "freeFlowTravelTime"
+                ),
+                "traffic_confidence": flow.get("confidence"),
+                "road_closure": flow.get("roadClosure"),
+                "congestion_ratio": congestion,
+                "traffic_risk": congestion * 100.0,
+                "traffic_status": "SUCCESS",
+                "traffic_observation_time": request_time,
+                "traffic_http_status": response.status_code,
+                "traffic_error": None,
+            })
+
+            if not validate_success(result):
+                result["traffic_status"] = "FAILED"
+                result["traffic_error"] = "VALIDATION_FAILED"
+
+            return result
+
+        except requests.RequestException as exc:
+            result["traffic_error"] = type(exc).__name__
+            result["traffic_observation_time"] = request_time
+
+            if attempt < MAX_RETRIES:
+                time.sleep(2 ** attempt)
+
+    return result
+
+
+def main():
+    load_dotenv(dotenv_path=ENV_FILE)
+
+    api_key = os.getenv("TOMTOM_API_KEY")
+    if not api_key or not api_key.strip():
+        raise SystemExit(
+            "ERROR: TOMTOM_API_KEY is not configured in .env"
+        )
+
+    for path in (INPUT_FILE, PRODUCTION_FILE):
+        if not path.exists():
+            raise FileNotFoundError(f"Required file missing: {path}")
+
+    targets = pd.read_csv(INPUT_FILE)
+    production = pd.read_csv(PRODUCTION_FILE)
+
+    for df, name in (
+        (targets, "targets"),
+        (production, "production"),
+    ):
+        missing = set(KEYS) - set(df.columns)
+        if missing:
+            raise ValueError(
+                f"{name} file missing road keys: {sorted(missing)}"
+            )
+
+        if df.duplicated(KEYS).any():
+            raise ValueError(
+                f"{name} file contains duplicate road keys"
+            )
+
+    if "traffic_status" not in production.columns:
+        raise ValueError("Production file lacks traffic_status")
+
+    if "traffic_observation_time" not in production.columns:
+        raise ValueError(
+            "Production file lacks traffic_observation_time"
+        )
+
+    timestamps = pd.to_datetime(
+        production["traffic_observation_time"],
+        errors="coerce",
+        utc=True,
+    )
+
+    affected_mask = timestamps.isna()
+
+    if "traffic_status" in production.columns:
+        # Target only successful records with missing/invalid timestamps.
+        affected_mask &= (
+            production["traffic_status"].eq("SUCCESS")
+        )
+
+    affected = production.loc[affected_mask].copy()
+
+    print("Production rows:", len(production))
+    print("Records requiring refresh:", len(affected))
+    print("Staging destination:", STAGING_FILE)
+    print("Production file will not be overwritten.")
+
+    if affected.empty:
+        print("No eligible records require timestamp repair.")
+        return
+
+    target_columns = set(targets.columns)
+    required_target_columns = set(KEYS) | {
+        "traffic_latitude",
+        "traffic_longitude",
+    }
+
+    if not required_target_columns.issubset(target_columns):
+        missing = required_target_columns - target_columns
+        raise ValueError(
+            f"Targets file missing columns: {sorted(missing)}"
+        )
+
+    coordinates = targets[
+        KEYS + ["traffic_latitude", "traffic_longitude"]
+    ]
+
+    merged = affected[KEYS].merge(
+        coordinates,
+        on=KEYS,
+        how="left",
+        validate="one_to_one",
+        indicator=True,
+    )
+
+    if not merged["_merge"].eq("both").all():
+        raise ValueError(
+            "Some affected roads have no matching target coordinates."
+        )
+
+    if STAGING_FILE.exists():
+        raise FileExistsError(
+            f"Staging file already exists: {STAGING_FILE}\n"
+            "Inspect or rename it before running again."
+        )
+
+    results = []
+    abort_reason = None
+    session = requests.Session()
+
+    try:
+        for position, (_, row) in enumerate(
+            merged.iterrows(), start=1
+        ):
+            result = fetch_traffic(
+                session,
+                api_key.strip(),
+                row["traffic_latitude"],
+                row["traffic_longitude"],
+            )
+
+            record = {key: row[key] for key in KEYS}
+            record.update(result)
+            results.append(record)
+
+            print(
+                f"Progress: {position}/{len(merged)} | "
+                f"status={result['traffic_status']} | "
+                f"HTTP={result['traffic_http_status']}"
+            )
+
+            if result["traffic_http_status"] in (401, 403, 429):
+                abort_reason = (
+                    "TomTom rejected the request with HTTP "
+                    f"{result['traffic_http_status']}"
+                )
+                break
+
+            if position < len(merged):
+                time.sleep(REQUEST_DELAY_SECONDS)
+
+    except KeyboardInterrupt:
+        abort_reason = "Refresh interrupted by user"
+
+    finally:
+        session.close()
+
+    refreshed = pd.DataFrame(results)
+
+    if abort_reason:
+        raise RuntimeError(
+            f"{abort_reason}. No staging file was published."
+        )
+
+    if len(refreshed) != len(merged):
+        raise RuntimeError(
+            f"Incomplete refresh: {len(refreshed)} of "
+            f"{len(merged)} records processed. "
+            "No staging file was published."
+        )
+
+    if refreshed.empty:
+        raise RuntimeError("No refresh results were collected.")
+
+    if refreshed.duplicated(KEYS).any():
+        raise ValueError("Duplicate road keys in refresh results.")
+
+    # Require a result for every affected road before publication.
+    expected_keys = set(map(tuple, merged[KEYS].itertuples(
+        index=False, name=None
+    )))
+    actual_keys = set(map(tuple, refreshed[KEYS].itertuples(
+        index=False, name=None
+    )))
+
+    if actual_keys != expected_keys:
+        raise RuntimeError(
+            "Refreshed road keys do not match the affected road keys. "
+            "No staging file was published."
+        )
+
+    # Write to a temporary file and atomically publish the staging file.
+    temp_file = STAGING_FILE.with_suffix(".csv.tmp")
+
+    try:
+        refreshed.to_csv(temp_file, index=False)
+        check_temp = pd.read_csv(temp_file)
+
+        if len(check_temp) != len(merged):
+            raise ValueError("Temporary staging row-count mismatch.")
+
+        if check_temp.duplicated(KEYS).any():
+            raise ValueError("Temporary staging has duplicate road keys.")
+
+        if set(check_temp["traffic_status"].dropna().unique()) - {
+            "SUCCESS", "FAILED"
+        }:
+            raise ValueError("Temporary staging has an unknown status.")
+
+        temp_file.replace(STAGING_FILE)
+
+    except Exception:
+        temp_file.unlink(missing_ok=True)
+        raise
+
+    check = pd.read_csv(STAGING_FILE)
+
+    if len(check) != len(refreshed):
+        raise ValueError("Staging row-count verification failed.")
+
+    if check.duplicated(KEYS).any():
+        raise ValueError("Staging file has duplicate road keys.")
+
+    successful = check["traffic_status"].eq("SUCCESS")
+
+    if successful.any():
+        valid_times = pd.to_datetime(
+            check.loc[successful, "traffic_observation_time"],
+            errors="coerce",
+            utc=True,
+        )
+        if valid_times.isna().any():
+            raise ValueError(
+                "Successful staged records have invalid timestamps."
+            )
+
+        for _, row in check.loc[successful].iterrows():
+            if not validate_success(row):
+                raise ValueError(
+                    "Successful staged record failed validation."
+                )
+
+    print("\n=== STAGING SUMMARY ===")
+    print("Rows attempted:", len(check))
+    print("Successful:", int(successful.sum()))
+    print("Failed:", int((~successful).sum()))
+    print("Staging file:", STAGING_FILE)
+    print("Production file has not been modified.")
+
+
+if __name__ == "__main__":
+    main()

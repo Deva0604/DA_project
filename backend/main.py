@@ -1,5 +1,7 @@
 from pathlib import Path
 from functools import lru_cache
+from datetime import datetime, timezone
+import os
 
 import pandas as pd
 import osmnx as ox
@@ -17,6 +19,48 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_FILE = BASE_DIR / "data/processed/ranked_saferoute_recommendations.csv"
 GRAPH_FILE = BASE_DIR / "data/processed/saferoute_routing_graph_v6.graphml"
 FRONTEND_DIR = BASE_DIR / "frontend"
+DYNAMIC_RISK_FILE = BASE_DIR / "data/processed/dynamic_road_risk.csv"
+
+TRAFFIC_FRESHNESS_MINUTES = int(
+    os.getenv("SAFEROUTE_TRAFFIC_FRESHNESS_MINUTES", "180")
+)
+WEATHER_FRESHNESS_MINUTES = int(
+    os.getenv("SAFEROUTE_WEATHER_FRESHNESS_MINUTES", "60")
+)
+
+
+def get_data_freshness(observation_end, threshold_minutes):
+    """Classify data freshness using its latest observation timestamp."""
+    if observation_end is None or pd.isna(observation_end):
+        return {
+            "freshness": "UNAVAILABLE",
+            "age_minutes": None,
+            "threshold_minutes": threshold_minutes,
+        }
+
+    try:
+        observed_at = pd.Timestamp(observation_end)
+        if observed_at.tzinfo is None:
+            observed_at = observed_at.tz_localize("Asia/Kolkata")
+
+        now = pd.Timestamp.now(tz="Asia/Kolkata")
+        age_minutes = (now - observed_at).total_seconds() / 60.0
+        if age_minutes < 0:
+            age_minutes = 0.0
+
+        freshness = "FRESH" if age_minutes <= threshold_minutes else "STALE"
+        return {
+            "freshness": freshness,
+            "age_minutes": round(age_minutes, 1),
+            "threshold_minutes": threshold_minutes,
+        }
+    except (TypeError, ValueError, OverflowError):
+        return {
+            "freshness": "UNAVAILABLE",
+            "age_minutes": None,
+            "threshold_minutes": threshold_minutes,
+        }
+
 
 app = FastAPI(
     title="SafeRoute API",
@@ -83,6 +127,34 @@ def load_recommendations():
     if missing:
         raise ValueError(f"Missing CSV columns: {sorted(missing)}")
 
+    return df
+
+
+def load_dynamic_risk():
+    if not DYNAMIC_RISK_FILE.exists():
+        raise FileNotFoundError(
+            f"Dynamic risk file not found: {DYNAMIC_RISK_FILE}"
+        )
+    df = pd.read_csv(DYNAMIC_RISK_FILE)
+    required = {
+        "osm_u",
+        "osm_v",
+        "osm_key",
+        "historical_risk",
+        "traffic_risk",
+        "weather_risk",
+        "dynamic_risk",
+        "dynamic_risk_category",
+        "risk_data_status",
+        "traffic_status",
+        "traffic_observation_time",
+        "observation_time",
+    }
+    missing = required - set(df.columns)
+    if missing:
+        raise ValueError(
+            f"Missing dynamic-risk columns: {sorted(missing)}"
+        )
     return df
 
 
@@ -222,9 +294,213 @@ def route_geometry(test_id: int, candidate_rank: int):
 
 @app.get("/api/data-status")
 def data_status():
-    return {
+    result = {
         "recommendations_file_exists": DATA_FILE.exists(),
         "road_graph_exists": GRAPH_FILE.exists(),
+        "dynamic_risk_file_exists": DYNAMIC_RISK_FILE.exists(),
         "weather": "Not yet verified as live",
         "traffic": "Not yet verified as live",
     }
+    if DYNAMIC_RISK_FILE.exists():
+        try:
+            df = load_dynamic_risk()
+            result.update({
+                "dynamic_risk_road_count": len(df),
+                "traffic": {
+                    "status": (
+                        "SUCCESS"
+                        if df["traffic_status"].eq("SUCCESS").all()
+                        else "PARTIAL"
+                    ),
+                    "observation_start": (
+                        None
+                        if df["traffic_observation_time"].isna().all()
+                        else str(df["traffic_observation_time"].min())
+                    ),
+                    "observation_end": (
+                        None
+                        if df["traffic_observation_time"].isna().all()
+                        else str(df["traffic_observation_time"].max())
+                    ),
+                    **get_data_freshness(
+                        df["traffic_observation_time"].max(),
+                        TRAFFIC_FRESHNESS_MINUTES,
+                    ),
+                },
+                "weather": {
+                    "status": (
+                        "SUCCESS"
+                        if df["weather_status"].eq("SUCCESS").all()
+                        else "PARTIAL"
+                    ),
+                    "observation_start": (
+                        None
+                        if df["observation_time"].isna().all()
+                        else str(df["observation_time"].min())
+                    ),
+                    "observation_end": (
+                        None
+                        if df["observation_time"].isna().all()
+                        else str(df["observation_time"].max())
+                    ),
+                    **get_data_freshness(
+                        df["observation_time"].max(),
+                        WEATHER_FRESHNESS_MINUTES,
+                    ),
+                },
+            })
+        except Exception as exc:
+            result["dynamic_risk_error"] = str(exc)
+    return result
+
+
+@app.get("/api/dynamic-risk/summary")
+def dynamic_risk_summary():
+    try:
+        df = load_dynamic_risk()
+        risk_counts = (
+            df["dynamic_risk_category"]
+            .value_counts(dropna=False)
+            .to_dict()
+        )
+        complete_count = int(
+            df["risk_data_status"].eq("COMPLETE").sum()
+        )
+        closed_count = int(
+            df["risk_data_status"].eq("CLOSED").sum()
+        )
+        available_risk = pd.to_numeric(
+            df["dynamic_risk"],
+            errors="coerce",
+        ).dropna()
+        return {
+            "road_segment_count": len(df),
+            "complete_risk_count": complete_count,
+            "closed_classification_count": closed_count,
+            "risk_category_counts": {
+                str(k): int(v) for k, v in risk_counts.items()
+            },
+            "mean_dynamic_risk": (
+                round(float(available_risk.mean()), 2)
+                if not available_risk.empty else None
+            ),
+            "traffic_observation_start": (
+                None
+                if df["traffic_observation_time"].isna().all()
+                else str(df["traffic_observation_time"].min())
+            ),
+            "traffic_observation_end": (
+                None
+                if df["traffic_observation_time"].isna().all()
+                else str(df["traffic_observation_time"].max())
+            ),
+            "weather_observation_start": (
+                None
+                if df["observation_time"].isna().all()
+                else str(df["observation_time"].min())
+            ),
+            "weather_observation_end": (
+                None
+                if df["observation_time"].isna().all()
+                else str(df["observation_time"].max())
+            ),
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/api/dynamic-risk/roads")
+def dynamic_risk_roads(
+    category: str | None = None,
+    limit: int = 100,
+):
+    try:
+        if limit < 1 or limit > 500:
+            raise HTTPException(
+                status_code=400,
+                detail="limit must be between 1 and 500",
+            )
+        df = load_dynamic_risk()
+        if category:
+            allowed = {
+                "LOW", "MEDIUM", "HIGH", "SEVERE",
+                "CLOSED", "UNAVAILABLE",
+            }
+            category = category.upper()
+            if category not in allowed:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"category must be one of {sorted(allowed)}",
+                )
+            df = df[
+                df["dynamic_risk_category"].astype(str).str.upper()
+                == category
+            ]
+        df = df.sort_values(
+            "dynamic_risk",
+            ascending=False,
+            na_position="last",
+        ).head(limit)
+
+        columns = [
+            "osm_u",
+            "osm_v",
+            "osm_key",
+            "road_name",
+            "highway",
+            "historical_risk",
+            "traffic_risk",
+            "weather_risk",
+            "dynamic_risk",
+            "dynamic_risk_category",
+            "risk_data_status",
+            "traffic_status",
+            "traffic_observation_time",
+            "observation_time",
+        ]
+        available = [c for c in columns if c in df.columns]
+        selected = df[available].copy()
+
+        # Clean OSM metadata that may be stored as Python-list strings.
+        def clean_metadata(value):
+            if value is None or pd.isna(value):
+                return None
+
+            if isinstance(value, (list, tuple)):
+                values = [str(item).strip() for item in value if str(item).strip()]
+                return ", ".join(values) if values else None
+
+            value = str(value).strip()
+
+            if not value or value.lower() in {"nan", "none", "null"}:
+                return None
+
+            if value.startswith("[") and value.endswith("]"):
+                import ast
+
+                try:
+                    parsed = ast.literal_eval(value)
+                    if isinstance(parsed, (list, tuple)):
+                        values = [
+                            str(item).strip()
+                            for item in parsed
+                            if str(item).strip()
+                        ]
+                        return ", ".join(values) if values else None
+                except (ValueError, SyntaxError):
+                    pass
+
+            return value
+
+        for column in ("road_name", "highway"):
+            if column in selected.columns:
+                selected[column] = selected[column].map(clean_metadata)
+
+        selected = selected.astype(object)
+        selected = selected.where(pd.notna(selected), None)
+
+        return selected.to_dict(orient="records")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))

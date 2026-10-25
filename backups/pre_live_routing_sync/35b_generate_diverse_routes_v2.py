@@ -1,0 +1,735 @@
+import math
+from pathlib import Path
+import math
+import warnings
+
+import networkx as nx
+import pandas as pd
+import osmnx as ox
+
+warnings.filterwarnings("ignore")
+
+# ============================================================
+# CONFIGURATION
+# ============================================================
+
+ROOT = Path(__file__).resolve().parents[1]
+
+GRAPH_FILE = ROOT / "data/processed/saferoute_routing_graph_v6.graphml"
+OUTPUT_DIR = ROOT / "data/processed"
+
+MAX_RAW_CANDIDATES = 10
+MAX_FINAL_ROUTES = 5
+MIN_FINAL_ROUTES = 3
+
+# Maximum permitted Jaccard similarity with previously selected routes.
+# Lower values enforce stronger diversity.
+DIVERSITY_THRESHOLDS = [0.50, 0.60, 0.70]
+
+RISK_WEIGHT = 0.75
+
+TESTS = [
+    {
+        "test_id": 1,
+        "origin": "Chennai Central",
+        "destination": "Anna Nagar",
+        "origin_lat": 13.0827,
+        "origin_lon": 80.2707,
+        "destination_lat": 13.0850,
+        "destination_lon": 80.2101,
+    },
+    {
+        "test_id": 2,
+        "origin": "Guindy",
+        "destination": "T Nagar",
+        "origin_lat": 13.0067,
+        "origin_lon": 80.2206,
+        "destination_lat": 13.0418,
+        "destination_lon": 80.2341,
+    },
+    {
+        "test_id": 3,
+        "origin": "Adyar",
+        "destination": "Perambur",
+        "origin_lat": 13.0012,
+        "origin_lon": 80.2565,
+        "destination_lat": 13.1167,
+        "destination_lon": 80.2333,
+    },
+    {
+        "test_id": 4,
+        "origin": "Velachery",
+        "destination": "Tambaram",
+        "origin_lat": 12.9750,
+        "origin_lon": 80.2210,
+        "destination_lat": 12.9249,
+        "destination_lon": 80.1000,
+    },
+    {
+        "test_id": 5,
+        "origin": "Chennai Airport",
+        "destination": "Marina Beach",
+        "origin_lat": 12.9941,
+        "origin_lon": 80.1709,
+        "destination_lat": 13.0500,
+        "destination_lon": 80.2824,
+    },
+]
+
+# ============================================================
+# HELPERS
+# ============================================================
+
+def safe_float(value, default=0.0):
+    try:
+        value = float(value)
+        return value if math.isfinite(value) else default
+    except (TypeError, ValueError):
+        return default
+
+
+def parse_bool(value):
+    if isinstance(value, bool):
+        return value
+
+    if value is None:
+        return False
+
+    if isinstance(value, (int, float)):
+        return value != 0
+
+    return str(value).strip().lower() in {
+        "true", "1", "yes", "y", "t"
+    }
+
+
+def get_attr(data, name, default=0.0):
+    return safe_float(data.get(name, default), default)
+
+
+def normalize_source(value):
+    value = str(value or "baseline").strip().lower()
+
+    if "closed" in value:
+        return "closed"
+
+    if "propagat" in value:
+        return "spatial_propagated"
+
+    if "observ" in value:
+        return "observed"
+
+    return "baseline"
+
+
+def edge_key(u, v, key):
+    return (u, v, key)
+
+
+def path_edges(graph, path):
+    """Return the selected directed graph edges along a node path."""
+    edges = []
+
+    for u, v in zip(path[:-1], path[1:]):
+        data = graph.get_edge_data(u, v)
+
+        if not data:
+            continue
+
+        # Our DiGraph stores one selected edge per node pair.
+        key = data.get("original_key", 0)
+        edges.append(edge_key(u, v, key))
+
+    return set(edges)
+
+
+def jaccard_similarity(edges_a, edges_b):
+    union = edges_a | edges_b
+
+    if not union:
+        return 1.0
+
+    return len(edges_a & edges_b) / len(union)
+
+
+def select_diverse_routes(candidates):
+    """
+    Greedily select routes that minimize their maximum overlap
+    with already selected routes.
+
+    Relax the overlap threshold only when necessary.
+    Never re-add a rejected route merely to fill the target count.
+    """
+    if not candidates:
+        return [], None
+
+    # Start with the fastest candidate.
+    remaining = candidates.copy()
+    selected = [remaining.pop(0)]
+    threshold_used = DIVERSITY_THRESHOLDS[0]
+
+    while remaining and len(selected) < MAX_FINAL_ROUTES:
+        scored = []
+
+        for candidate in remaining:
+            similarities = [
+                jaccard_similarity(
+                    candidate["edge_set"],
+                    chosen["edge_set"],
+                )
+                for chosen in selected
+            ]
+
+            max_overlap = max(similarities) if similarities else 0.0
+            avg_overlap = (
+                sum(similarities) / len(similarities)
+                if similarities else 0.0
+            )
+
+            scored.append(
+                (max_overlap, avg_overlap, candidate["route_id"], candidate)
+            )
+
+        scored.sort(key=lambda item: (item[0], item[1], item[2]))
+
+        chosen_candidate = None
+
+        # Try increasingly relaxed thresholds.
+        for threshold in DIVERSITY_THRESHOLDS:
+            eligible = [
+                item for item in scored
+                if item[0] <= threshold
+            ]
+
+            if eligible:
+                threshold_used = threshold
+                chosen_candidate = eligible[0][3]
+                break
+
+        if chosen_candidate is None:
+            break
+
+        selected.append(chosen_candidate)
+        remaining = [
+            candidate for candidate in remaining
+            if candidate["route_id"] != chosen_candidate["route_id"]
+        ]
+
+    return selected, threshold_used
+
+
+def route_metrics(graph, path, edge_set, test, route_id):
+    total_distance = 0.0
+    total_time = 0.0
+
+    hist_values = []
+    traffic_values = []
+    weather_values = []
+    dynamic_values = []
+
+    source_counts = {
+        "observed_edges": 0,
+        "propagated_edges": 0,
+        "baseline_edges": 0,
+        "closed_edges": 0,
+    }
+
+    risk_coverage_edges = 0
+
+    for u, v in zip(path[:-1], path[1:]):
+        data = graph.get_edge_data(u, v)
+
+        if not data:
+            continue
+
+        total_distance += get_attr(data, "length", 0.0)
+        total_time += get_attr(data, "travel_time", 0.0)
+
+        historical = get_attr(data, "historical_risk", 10.0)
+        traffic = get_attr(data, "traffic_risk", 0.0)
+        weather = get_attr(data, "weather_risk", 0.0)
+        dynamic = get_attr(data, "dynamic_risk", 5.0)
+
+        hist_values.append(historical)
+        traffic_values.append(traffic)
+        weather_values.append(weather)
+        dynamic_values.append(dynamic)
+
+        source = normalize_source(data.get("risk_source", "baseline"))
+
+        if source == "observed":
+            source_counts["observed_edges"] += 1
+            risk_coverage_edges += 1
+        elif source == "spatial_propagated":
+            source_counts["propagated_edges"] += 1
+            risk_coverage_edges += 1
+        elif source == "closed":
+            source_counts["closed_edges"] += 1
+        else:
+            source_counts["baseline_edges"] += 1
+
+    edge_count = max(len(path) - 1, 1)
+
+    avg_historical = (
+        sum(hist_values) / len(hist_values) if hist_values else 0.0
+    )
+    avg_traffic = (
+        sum(traffic_values) / len(traffic_values) if traffic_values else 0.0
+    )
+    avg_weather = (
+        sum(weather_values) / len(weather_values) if weather_values else 0.0
+    )
+    avg_dynamic = (
+        sum(dynamic_values) / len(dynamic_values) if dynamic_values else 0.0
+    )
+
+    coverage = 100.0 * risk_coverage_edges / edge_count
+
+    return {
+        "test_id": test["test_id"],
+        "origin": test["origin"],
+        "destination": test["destination"],
+        "route_id": route_id,
+        "distance_km": total_distance / 1000.0,
+        "travel_time_min": total_time / 60.0,
+        "avg_historical_risk": avg_historical,
+        "avg_traffic_risk": avg_traffic,
+        "avg_weather_risk": avg_weather,
+        "avg_dynamic_risk": avg_dynamic,
+        "risk_coverage_percent": coverage,
+        "edge_count": edge_count,
+        "unique_edge_count": len(edge_set),
+        **source_counts,
+    }
+
+
+# ============================================================
+# MAIN
+# ============================================================
+
+def load_graph_fast(filepath):
+    """Load GraphML with minimal type conversion, skipping geometry."""
+    G = nx.read_graphml(
+        filepath,
+        node_type=int,
+        force_multigraph=True,
+    )
+    
+    # Convert only the attributes we need, skip geometry
+    for _, _, data in G.edges(data=True, keys=False):
+        data.pop("id", None)
+        # Convert numeric attributes
+        for attr in ("length", "historical_risk", "traffic_risk", "weather_risk", 
+                     "dynamic_risk", "routing_travel_time", "routing_weight",
+                     "nearest_observed_distance_m", "safety_weight", "balanced_weight"):
+            if attr in data:
+                try:
+                    data[attr] = float(data[attr])
+                except (ValueError, TypeError):
+                    pass
+        for attr in ("osmid", "nearby_observed_road_count"):
+            if attr in data:
+                try:
+                    data[attr] = int(data[attr])
+                except (ValueError, TypeError):
+                    pass
+        for attr in ("oneway", "reversed", "road_closure"):
+            if attr in data:
+                val = str(data[attr]).strip().lower()
+                data[attr] = val in ("true", "1", "yes", "y", "t")
+        # Remove geometry to save memory/speed
+        data.pop("geometry", None)
+    
+    for _, data in G.nodes(data=True):
+        for attr in ("x", "y", "street_count"):
+            if attr in data:
+                try:
+                    data[attr] = float(data[attr]) if attr in ("x", "y") else int(data[attr])
+                except (ValueError, TypeError):
+                    pass
+    
+    return G
+
+
+def main():
+    if not GRAPH_FILE.exists():
+        raise FileNotFoundError(f"Routing graph not found: {GRAPH_FILE}")
+
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    print("=" * 72)
+    print("SAFEROUTE — DIVERSITY-AWARE ROUTE GENERATION V2")
+    print("=" * 72)
+    print(f"Graph: {GRAPH_FILE}")
+    print("Loading routing graph...")
+
+    graph = load_graph_fast(GRAPH_FILE)
+
+    print(f"Nodes: {graph.number_of_nodes():,}")
+    print(f"Edges: {graph.number_of_edges():,}")
+
+    # Build a directed graph with one suitable edge per node pair.
+    # Closed edges are excluded.
+    routing_graph = nx.DiGraph()
+    routing_graph.add_nodes_from(graph.nodes(data=True))
+
+    closed_removed = 0
+
+    for u, v, key, data in graph.edges(keys=True, data=True):
+        if parse_bool(data.get("road_closure", False)):
+            closed_removed += 1
+            continue
+
+        if normalize_source(data.get("risk_source", "")) == "closed":
+            closed_removed += 1
+            continue
+
+        travel_time = get_attr(data, "routing_travel_time", 0.0)
+        distance = get_attr(data, "length", 0.0)
+        dynamic_risk = get_attr(data, "dynamic_risk", 5.0)
+        if not all(math.isfinite(value) for value in (travel_time, distance, dynamic_risk)):
+            continue
+
+        if travel_time <= 0 or distance < 0:
+            continue
+
+        # Small risk penalty generates alternative risk-aware paths.
+        weight = travel_time * (
+            1.0 + RISK_WEIGHT * max(0.0, dynamic_risk) / 100.0
+        )
+
+        if not math.isfinite(weight) or weight <= 0:
+            continue
+
+        candidate_data = dict(data)
+        candidate_data["original_key"] = key
+        candidate_data["travel_time"] = travel_time
+        candidate_data["length"] = distance
+        candidate_data["dynamic_risk"] = dynamic_risk
+        candidate_data["candidate_weight"] = weight
+
+        existing = routing_graph.get_edge_data(u, v)
+
+        # If parallel OSM edges exist, retain the edge with the
+        # lowest candidate cost for this directed node pair.
+        if existing is None or weight < existing.get("candidate_weight", float("inf")):
+            routing_graph.add_edge(u, v, **candidate_data)
+
+    print(f"Closed edges excluded: {closed_removed:,}")
+    print(f"Routing edges available: {routing_graph.number_of_edges():,}")
+
+    raw_rows = []
+    final_rows = []
+    similarity_rows = []
+    summary_rows = []
+
+    # Pre-compute node coordinates for fast nearest-node lookup
+    node_coordinates = {}
+    for node_id, data in graph.nodes(data=True):
+        try:
+            lon = float(data["x"])
+            lat = float(data["y"])
+            if math.isfinite(lon) and math.isfinite(lat):
+                node_coordinates[node_id] = (lon, lat)
+        except (KeyError, TypeError, ValueError):
+            continue
+
+    if not node_coordinates:
+        raise ValueError("No valid numeric node coordinates found.")
+
+    for test in TESTS:
+        print("\n" + "-" * 72)
+        print(
+            f"Test {test['test_id']}: "
+            f"{test['origin']} -> {test['destination']}"
+        )
+
+        origin_lon, origin_lat = test["origin_lon"], test["origin_lat"]
+        destination_lon, destination_lat = test["destination_lon"], test["destination_lat"]
+
+        origin = min(
+            node_coordinates,
+            key=lambda n: (
+                (node_coordinates[n][0] - origin_lon) ** 2
+                + (node_coordinates[n][1] - origin_lat) ** 2
+            ),
+        )
+
+        destination = min(
+            node_coordinates,
+            key=lambda n: (
+                (node_coordinates[n][0] - destination_lon) ** 2
+                + (node_coordinates[n][1] - destination_lat) ** 2
+            ),
+        )
+
+        if origin not in routing_graph or destination not in routing_graph:
+            print("Skipped: origin/destination node is unavailable.")
+            continue
+
+        if not nx.has_path(routing_graph, origin, destination):
+            print("Skipped: no available path after excluding closed roads.")
+            continue
+
+        generator = nx.shortest_simple_paths(
+            routing_graph,
+            origin,
+            destination,
+            weight="candidate_weight",
+        )
+
+        candidates = []
+        seen_paths = set()
+
+        for raw_index, path in enumerate(generator):
+            if len(candidates) >= MAX_RAW_CANDIDATES:
+                break
+
+            signature = tuple(path)
+
+            if signature in seen_paths:
+                continue
+
+            seen_paths.add(signature)
+            edge_set = path_edges(routing_graph, path)
+
+            metrics = route_metrics(
+                routing_graph,
+                path,
+                edge_set,
+                test,
+                route_id=f"RAW_{raw_index + 1}",
+            )
+
+            candidate = {
+                "route_id": f"RAW_{raw_index + 1}",
+                "path": path,
+                "edge_set": edge_set,
+                "metrics": metrics,
+            }
+
+            candidates.append(candidate)
+
+            raw_rows.append({
+                **metrics,
+                "raw_candidate_rank": raw_index + 1,
+            })
+
+        if not candidates:
+            print("No candidate routes generated.")
+            continue
+
+        # Sort raw candidates by actual travel time, then risk.
+        candidates.sort(
+            key=lambda c: (
+                c["metrics"]["travel_time_min"],
+                c["metrics"]["avg_dynamic_risk"],
+            )
+        )
+
+        for index, candidate in enumerate(candidates, start=1):
+            candidate["route_id"] = f"RAW_{index}"
+
+        selected, threshold_used = select_diverse_routes(candidates)
+
+        # Calculate pairwise similarities for the selected routes.
+        for i in range(len(selected)):
+            for j in range(i + 1, len(selected)):
+                a = selected[i]
+                b = selected[j]
+
+                similarity_rows.append({
+                    "test_id": test["test_id"],
+                    "origin": test["origin"],
+                    "destination": test["destination"],
+                    "route_a": a["route_id"],
+                    "route_b": b["route_id"],
+                    "jaccard_similarity": jaccard_similarity(
+                        a["edge_set"], b["edge_set"]
+                    ),
+                })
+
+        # Recompute route IDs and final rows.
+        for index, candidate in enumerate(selected, start=1):
+            metrics = dict(candidate["metrics"])
+            metrics["route_id"] = f"R{index}"
+            metrics["selection_order"] = index
+            metrics["selection_overlap_threshold"] = threshold_used
+
+            similarities = [
+                jaccard_similarity(
+                    candidate["edge_set"], previous["edge_set"]
+                )
+                for previous in selected[:index - 1]
+            ]
+
+            metrics["max_similarity_to_selected"] = (
+                max(similarities) if similarities else 0.0
+            )
+
+            final_rows.append(metrics)
+            candidate["final_metrics"] = metrics
+
+        if not selected:
+            print("No routes selected.")
+            continue
+
+        # Recommendation scores are calculated within this OD pair.
+        selected_metrics = [c["final_metrics"] for c in selected]
+
+        times = [m["travel_time_min"] for m in selected_metrics]
+        risks = [m["avg_dynamic_risk"] for m in selected_metrics]
+
+        min_time, max_time = min(times), max(times)
+        min_risk, max_risk = min(risks), max(risks)
+
+        def normalize(value, minimum, maximum):
+            if maximum == minimum:
+                return 0.0
+            return (value - minimum) / (maximum - minimum)
+
+        for candidate in selected:
+            m = candidate["final_metrics"]
+
+            m["balanced_score"] = (
+                0.60 * normalize(m["travel_time_min"], min_time, max_time)
+                + 0.40 * normalize(m["avg_dynamic_risk"], min_risk, max_risk)
+            )
+
+        fastest = min(
+            selected,
+            key=lambda c: c["final_metrics"]["travel_time_min"],
+        )
+        safest = min(
+            selected,
+            key=lambda c: (
+                c["final_metrics"]["avg_dynamic_risk"],
+                c["final_metrics"]["travel_time_min"],
+            ),
+        )
+        balanced = min(
+            selected,
+            key=lambda c: c["final_metrics"]["balanced_score"],
+        )
+
+        for candidate in selected:
+            m = candidate["final_metrics"]
+            m["recommendation"] = "Alternative"
+
+            if candidate is fastest:
+                m["recommendation"] = "Fastest"
+            if candidate is safest:
+                m["recommendation"] = (
+                    "Fastest + Safest"
+                    if candidate is fastest else "Safest"
+                )
+            if candidate is balanced:
+                if m["recommendation"] == "Alternative":
+                    m["recommendation"] = "Balanced"
+                else:
+                    m["recommendation"] += " + Balanced"
+
+        similarities = [
+            row["jaccard_similarity"]
+            for row in similarity_rows
+            if row["test_id"] == test["test_id"]
+        ]
+
+        summary_rows.append({
+            "test_id": test["test_id"],
+            "origin": test["origin"],
+            "destination": test["destination"],
+            "raw_candidate_count": len(candidates),
+            "selected_route_count": len(selected),
+            "threshold_used": threshold_used,
+            "mean_pairwise_similarity": (
+                sum(similarities) / len(similarities)
+                if similarities else 0.0
+            ),
+            "route_diversity_percent": (
+                100.0 * (1.0 - sum(similarities) / len(similarities))
+                if similarities else 0.0
+            ),
+            "average_risk_coverage_percent": sum(
+                m["risk_coverage_percent"] for m in selected_metrics
+            ) / len(selected_metrics),
+            "fastest_route": fastest["final_metrics"]["route_id"],
+            "safest_route": safest["final_metrics"]["route_id"],
+            "balanced_route": balanced["final_metrics"]["route_id"],
+            "status": (
+                "PASS"
+                if (
+                    len(selected) >= MIN_FINAL_ROUTES
+                    and (
+                        sum(similarities) / len(similarities)
+                        if similarities else 1.0
+                    ) <= 0.50
+                )
+                else "LIMITED_ROUTE_DIVERSITY"
+            ),
+        })
+
+        print(f"Raw candidates generated: {len(candidates)}")
+        print(f"Routes actually selected: {len(selected)}")
+        print(f"Highest threshold used: {threshold_used}")
+        print(f"Fastest: {fastest['final_metrics']['route_id']}")
+        print(f"Safest: {safest['final_metrics']['route_id']}")
+        print(f"Balanced: {balanced['final_metrics']['route_id']}")
+
+        for candidate in selected:
+            m = candidate["final_metrics"]
+            print(
+                f"  {m['route_id']}: "
+                f"{m['travel_time_min']:.2f} min, "
+                f"{m['distance_km']:.2f} km, "
+                f"risk={m['avg_dynamic_risk']:.2f}, "
+                f"coverage={m['risk_coverage_percent']:.1f}%, "
+                f"max_overlap={m['max_similarity_to_selected']:.3f}, "
+                f"{m['recommendation']}"
+            )
+
+    # ========================================================
+    # SAVE OUTPUTS
+    # ========================================================
+
+    outputs = {
+        "diverse_candidate_routes_v2.csv": pd.DataFrame(final_rows),
+        "diverse_route_pairwise_similarity_v2.csv": pd.DataFrame(similarity_rows),
+        "diverse_route_test_summary_v2.csv": pd.DataFrame(summary_rows),
+        "raw_candidate_routes_v2.csv": pd.DataFrame(raw_rows),
+    }
+
+    for filename, dataframe in outputs.items():
+        output_path = OUTPUT_DIR / filename
+        dataframe.to_csv(output_path, index=False)
+        print(f"Saved: {output_path} ({len(dataframe)} rows)")
+
+    print("\n" + "=" * 72)
+    print("STEP 35b COMPLETE")
+    print("=" * 72)
+
+    if summary_rows:
+        summary = pd.DataFrame(summary_rows)
+        print(f"OD pairs processed: {len(summary)}")
+        print(f"Total selected routes: {len(final_rows)}")
+        print(
+            "Average route diversity: "
+            f"{summary['route_diversity_percent'].mean():.2f}%"
+        )
+        print(
+            "Average risk coverage: "
+            f"{summary['average_risk_coverage_percent'].mean():.2f}%"
+        )
+        print("\nValidation status:")
+        print(summary[[
+            "test_id",
+            "selected_route_count",
+            "route_diversity_percent",
+            "status",
+        ]].to_string(index=False))
+    else:
+        print("WARNING: No routes were generated.")
+
+
+if __name__ == "__main__":
+    main()
